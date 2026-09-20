@@ -17,7 +17,7 @@ def init():
  c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break_start TEXT")
  c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break_end TEXT")
  if c.execute('select count(*) n from staff').fetchone()['n']==0:
-  c.executemany('insert into staff(name) values(%s)',[(x,) for x in DEFAULT_STAFF])
+  c.executemany('insert into staff(name) values(%s)', [(x,) for x in DEFAULT_STAFF])
  rows=c.execute('select id,sort_order from staff order by id').fetchall()
  if rows and all((r['sort_order'] or 0)==0 for r in rows):
   for i,r in enumerate(rows): c.execute('update staff set sort_order=%s where id=%s',(i,r['id']))
