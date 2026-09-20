@@ -8,7 +8,7 @@
 <div id="editor" class="editor hidden"><b>Sửa ca nhanh</b><small class="hint">Gõ 7 → 07:00 • 730 → 07:30 • Enter/Tab để nhảy ô</small><label>Giờ làm <span><input id="st" placeholder="07:30"> – <input id="en" placeholder="17:30"></span></label><label>Giờ nghỉ <span><input id="bs" placeholder="12:00"> – <input id="be" placeholder="13:00"></span></label><div><button id="clear">Nghỉ / Xóa ca</button><button id="cancel">Hủy</button><button id="save">Lưu ngay</button></div></div>
 <div id="staffEditor" class="editor hidden"><b>Cài nhân viên</b><label>Loại <select id="staffType"><option value="baito">Baito</option><option value="fulltime">正社員</option></select></label><label>Cách tính <select id="payType"><option value="hourly">時給 / giờ</option><option value="monthly">月給 / tháng</option></select></label><label>時給 <span>¥ <input id="hourly" type="number" step="10"></span></label><label>月給 <span>¥ <input id="monthly" type="number" step="1000"></span></label><div><button id="staffCancel">Hủy</button><button id="staffSave">Lưu</button></div></div>
 <script>
-let cell=null,staffBtn=null,saving=false;
+let cell=null,staffBtn=null,saving=false,dirty=false;
 const ed=document.querySelector('#editor'),sed=document.querySelector('#staffEditor'),status=document.querySelector('#status');
 const inputs=[st,en,bs,be];
 function norm(v){
@@ -20,14 +20,14 @@ function norm(v){
  if(h>23||m>59)return null;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')
 }
 function normalizeInput(el){let n=norm(el.value);if(n!==null)el.value=n;return n}
-function openEditor(x){cell=x;document.querySelectorAll('.editing').forEach(y=>y.classList.remove('editing'));x.classList.add('editing');st.value=x.dataset.start;en.value=x.dataset.end;bs.value=x.dataset.bs;be.value=x.dataset.be;const r=x.getBoundingClientRect();ed.style.left=Math.max(8,Math.min(innerWidth-350,r.left))+'px';ed.style.top=Math.max(8,Math.min(innerHeight-245,r.bottom+4))+'px';ed.classList.remove('hidden');st.focus();st.select()}
+function openEditor(x){dirty=false;cell=x;document.querySelectorAll('.editing').forEach(y=>y.classList.remove('editing'));x.classList.add('editing');st.value=x.dataset.start;en.value=x.dataset.end;bs.value=x.dataset.bs;be.value=x.dataset.be;const r=x.getBoundingClientRect();ed.style.left=Math.max(8,Math.min(innerWidth-350,r.left))+'px';ed.style.top=Math.max(8,Math.min(innerHeight-245,r.bottom+4))+'px';ed.classList.remove('hidden');st.focus();st.select()}
 document.querySelectorAll('.shift').forEach(x=>x.onclick=e=>{e.stopPropagation();openEditor(x)});
-inputs.forEach((el,i)=>{el.addEventListener('blur',()=>normalizeInput(el));el.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(i<inputs.length-1){normalizeInput(el);inputs[i+1].focus();inputs[i+1].select()}else saveShift()}else if(e.key==='Tab'){normalizeInput(el)}})});
-function closeEditor(){ed.classList.add('hidden');if(cell)cell.classList.remove('editing')}
+inputs.forEach((el,i)=>{el.addEventListener('input',()=>{dirty=true;status.textContent='● Chưa lưu'});el.addEventListener('blur',()=>normalizeInput(el));el.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(i<inputs.length-1){normalizeInput(el);inputs[i+1].focus();inputs[i+1].select()}else saveShift()}else if(e.key==='Tab'){normalizeInput(el)}})});
+function closeEditor(){dirty=false;status.textContent='';ed.classList.add('hidden');if(cell)cell.classList.remove('editing')}
 cancel.onclick=e=>{e.stopPropagation();closeEditor()};
 clear.onclick=e=>{e.stopPropagation();st.value=en.value=bs.value=be.value='';saveShift()};
 save.onclick=e=>{e.stopPropagation();saveShift()};
-async function saveShift(){if(!cell||saving)return;let a=normalizeInput(st),b=normalizeInput(en),c=normalizeInput(bs),d=normalizeInput(be);if((st.value&&a===null)||(en.value&&b===null)||(bs.value&&c===null)||(be.value&&d===null)||((a||b)&&(!a||!b||b<=a))||((c||d)&&(!c||!d||d<=c||c<a||d>b))){status.textContent='⚠️ Kiểm tra lại giờ làm / giờ nghỉ';cell.classList.add('bad');return}saving=true;await fetch('/shift',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_id:+cell.dataset.id,date:cell.dataset.date,start:a,end:b,break_start:c,break_end:d})});location.reload()}
+async function saveShift(){if(!cell||saving)return;let a=normalizeInput(st),b=normalizeInput(en),c=normalizeInput(bs),d=normalizeInput(be);if((st.value&&a===null)||(en.value&&b===null)||(bs.value&&c===null)||(be.value&&d===null)||((a||b)&&(!a||!b||b<=a))||((c||d)&&(!c||!d||d<=c||c<a||d>b))){status.textContent='⚠️ Kiểm tra lại giờ làm / giờ nghỉ';cell.classList.add('bad');return}saving=true;status.textContent='Đang lưu...';await fetch('/shift',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_id:+cell.dataset.id,date:cell.dataset.date,start:a,end:b,break_start:c,break_end:d})});dirty=false;status.textContent='✓ Đã lưu';location.reload()}
 // Click ra ngoài = tự lưu. Click sang ô ca khác = lưu ô hiện tại trước.
 document.addEventListener('mousedown',e=>{if(ed.classList.contains('hidden')||saving)return;if(ed.contains(e.target))return;let next=e.target.closest('.shift');if(next){e.preventDefault();saveShift()}else saveShift()});
 addStaff.onclick=async()=>{let n=prompt('Tên nhân viên mới:');if(n&&n.trim()){await fetch('/staff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'add',name:n})});location.reload()}};
@@ -78,4 +78,5 @@ changeWeekBtn.onclick=async()=>{
  location='/?week='+data.target;
 };
 
+window.addEventListener('beforeunload',e=>{if(dirty&&!saving){e.preventDefault();e.returnValue=''}});
 </script></body></html>
