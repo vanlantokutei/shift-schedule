@@ -46,6 +46,19 @@ def index():
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
  return render_template('index.html',staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+@app.get('/month')
+def month_view():
+ try:
+  y=int(request.args.get('year') or date.today().year); mo=int(request.args.get('month') or date.today().month)
+  first=date(y,mo,1)
+ except Exception: first=date.today().replace(day=1); y=first.year; mo=first.month
+ next_first=date(y+1,1,1) if mo==12 else date(y,mo+1,1)
+ last=next_first-timedelta(days=1); days=[first+timedelta(days=i) for i in range((last-first).days+1)]
+ prev=(first-timedelta(days=1)).replace(day=1); nxt=next_first
+ c=db(); staff=c.execute('select * from staff where active=1 order by sort_order,id').fetchall(); rows=c.execute('select * from shifts where work_date between %s and %s',(str(first),str(last))).fetchall(); c.close()
+ sm={(r['staff_id'],r['work_date']):r for r in rows}; totals={s['id']:sum(hours(sm.get((s['id'],str(d)))) for d in days) for s in staff}
+ return render_template('month.html',staff=staff,days=days,sm=sm,totals=totals,year=y,month=mo,prev_year=prev.year,prev_month=prev.month,next_year=nxt.year,next_month=nxt.month)
+
 @app.post('/shift')
 def shift():
  x=request.get_json();c=db()
