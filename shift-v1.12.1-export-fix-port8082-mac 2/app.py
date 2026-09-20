@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request, jsonify, Response
 from datetime import date, timedelta, datetime
 import os
-import sqlite3
 import psycopg
 from psycopg.rows import dict_row
 app=Flask(__name__); DB_URL=os.environ.get('DATABASE_URL')
@@ -100,36 +99,6 @@ def move_week():
   c.rollback(); c.close(); return jsonify(ok=False,error=str(e)),500
  c.close(); return jsonify(ok=True,target=str(target),moved=len(source_rows))
 
-@app.get('/restore-old')
-def restore_old():
- old_path=os.path.join(os.path.dirname(__file__),'shift.db')
- if not os.path.exists(old_path): return jsonify(ok=False,error='old shift.db not found'),404
- old=sqlite3.connect(old_path); old.row_factory=sqlite3.Row
- try:
-  old_staff=old.execute('select * from staff order by id').fetchall()
-  old_shifts=old.execute('select * from shifts order by work_date,staff_id').fetchall()
-  c=db(); idmap={}
-  for s in old_staff:
-   cur=c.execute('select id from staff where name=%s order by active desc,id limit 1',(s['name'],)).fetchone()
-   if cur: nid=cur['id']
-   else:
-    mx=c.execute('select coalesce(max(sort_order),-1)+1 n from staff').fetchone()['n']
-    nid=c.execute('insert into staff(name,sort_order) values(%s,%s) returning id',(s['name'],mx)).fetchone()['id']
-   idmap[s['id']]=nid
-  restored=0
-  for r in old_shifts:
-   nid=idmap.get(r['staff_id'])
-   if not nid: continue
-   c.execute("""insert into shifts(staff_id,work_date,start,"end",break_min,break_start,break_end)
-    values(%s,%s,%s,%s,%s,%s,%s)
-    on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",
-    break_min=excluded.break_min,break_start=excluded.break_start,break_end=excluded.break_end""",
-    (nid,r['work_date'],r['start'],r['end'],r['break_min'] or 0,r['break_start'],r['break_end']))
-   restored+=1
-  c.commit(); c.close()
- finally: old.close()
- return jsonify(ok=True,restored=restored)
-
 @app.get('/backup.csv')
 def backup_csv():
  import csv, io
@@ -143,6 +112,35 @@ def backup_csv():
  for r in shifts: w.writerow(['shift',r['id'],r['staff_id'],r['work_date'],r['start'],r['end'],r['break_start'] or '',r['break_end'] or '',r['break_min'] or 0])
  filename='shift-backup-'+datetime.now().strftime('%Y%m%d-%H%M')+'.csv'
  return Response(out.getvalue(),mimetype='text/csv; charset=utf-8',headers={'Content-Disposition':'attachment; filename='+filename})
+
+@app.post('/restore-backup')
+def restore_backup():
+ import csv, io
+ f=request.files.get('backup')
+ if not f: return jsonify(ok=False,error='Chưa chọn file backup'),400
+ try:
+  text=f.read().decode('utf-8-sig'); rows=list(csv.reader(io.StringIO(text)))
+  if not rows or rows[0][:2]!=['type','id']: raise ValueError('File backup không hợp lệ')
+  staff_rows=[r for r in rows[1:] if r and r[0]=='staff']; shift_rows=[r for r in rows[1:] if r and r[0]=='shift']
+  c=db(); idmap={}
+  try:
+   c.execute('begin')
+   for r in staff_rows:
+    oldid=int(r[1]); name=r[2]; active=int(r[3] or 1); stype=r[4] or 'baito'; ptype=r[5] or 'hourly'; hourly=int(r[6] or 0); monthly=int(r[7] or 0); order=int(r[8] or 0)
+    found=c.execute('select id from staff where name=%s order by active desc,id limit 1',(name,)).fetchone()
+    if found: nid=found['id']; c.execute('update staff set active=%s,staff_type=%s,pay_type=%s,hourly_rate=%s,monthly_salary=%s,sort_order=%s where id=%s',(active,stype,ptype,hourly,monthly,order,nid))
+    else: nid=c.execute('insert into staff(name,active,staff_type,pay_type,hourly_rate,monthly_salary,sort_order) values(%s,%s,%s,%s,%s,%s,%s) returning id',(name,active,stype,ptype,hourly,monthly,order)).fetchone()['id']
+    idmap[oldid]=nid
+   for r in shift_rows:
+    nid=idmap.get(int(r[2]));
+    if not nid: continue
+    c.execute('''insert into shifts(staff_id,work_date,start,"end",break_start,break_end,break_min) values(%s,%s,%s,%s,%s,%s,%s) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=excluded.break_start,break_end=excluded.break_end,break_min=excluded.break_min''',(nid,r[3],r[4],r[5],r[6] or None,r[7] or None,int(r[8] or 0)))
+   c.commit()
+  except Exception:
+   c.rollback(); raise
+  finally: c.close()
+  return jsonify(ok=True,staff=len(staff_rows),shifts=len(shift_rows))
+ except Exception as e: return jsonify(ok=False,error=str(e)),400
 
 @app.post('/staff/reorder')
 def staff_reorder():
