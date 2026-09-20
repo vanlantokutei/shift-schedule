@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, Response
 from datetime import date, timedelta, datetime
 import os
+import sqlite3
 import psycopg
 from psycopg.rows import dict_row
 app=Flask(__name__); DB_URL=os.environ.get('DATABASE_URL')
@@ -98,6 +99,36 @@ def move_week():
  except Exception as e:
   c.rollback(); c.close(); return jsonify(ok=False,error=str(e)),500
  c.close(); return jsonify(ok=True,target=str(target),moved=len(source_rows))
+
+@app.get('/restore-old')
+def restore_old():
+ old_path=os.path.join(os.path.dirname(__file__),'shift.db')
+ if not os.path.exists(old_path): return jsonify(ok=False,error='old shift.db not found'),404
+ old=sqlite3.connect(old_path); old.row_factory=sqlite3.Row
+ try:
+  old_staff=old.execute('select * from staff order by id').fetchall()
+  old_shifts=old.execute('select * from shifts order by work_date,staff_id').fetchall()
+  c=db(); idmap={}
+  for s in old_staff:
+   cur=c.execute('select id from staff where name=%s order by active desc,id limit 1',(s['name'],)).fetchone()
+   if cur: nid=cur['id']
+   else:
+    mx=c.execute('select coalesce(max(sort_order),-1)+1 n from staff').fetchone()['n']
+    nid=c.execute('insert into staff(name,sort_order) values(%s,%s) returning id',(s['name'],mx)).fetchone()['id']
+   idmap[s['id']]=nid
+  restored=0
+  for r in old_shifts:
+   nid=idmap.get(r['staff_id'])
+   if not nid: continue
+   c.execute("""insert into shifts(staff_id,work_date,start,"end",break_min,break_start,break_end)
+    values(%s,%s,%s,%s,%s,%s,%s)
+    on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",
+    break_min=excluded.break_min,break_start=excluded.break_start,break_end=excluded.break_end""",
+    (nid,r['work_date'],r['start'],r['end'],r['break_min'] or 0,r['break_start'],r['break_end']))
+   restored+=1
+  c.commit(); c.close()
+ finally: old.close()
+ return jsonify(ok=True,restored=restored)
 
 @app.get('/backup.csv')
 def backup_csv():
