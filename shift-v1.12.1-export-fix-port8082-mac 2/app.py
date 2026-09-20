@@ -15,7 +15,7 @@ def init():
  for col,sql in [('staff_type',"ALTER TABLE staff ADD COLUMN IF NOT EXISTS staff_type TEXT DEFAULT 'baito'"),('pay_type',"ALTER TABLE staff ADD COLUMN IF NOT EXISTS pay_type TEXT DEFAULT 'hourly'"),('hourly_rate',"ALTER TABLE staff ADD COLUMN IF NOT EXISTS hourly_rate INTEGER DEFAULT 1250"),('monthly_salary',"ALTER TABLE staff ADD COLUMN IF NOT EXISTS monthly_salary INTEGER DEFAULT 0"),('sort_order',"ALTER TABLE staff ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0")]:
   c.execute(sql)
  c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break_start TEXT")
- c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break_"end" TEXT")
+ c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break_end TEXT")
  if c.execute('select count(*) n from staff').fetchone()['n']==0:
   c.executemany('insert into staff(name) values(%s)',[(x,) for x in DEFAULT_STAFF])
  rows=c.execute('select id,sort_order from staff order by id').fetchall()
