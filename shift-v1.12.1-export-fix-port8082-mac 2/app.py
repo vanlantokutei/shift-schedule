@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 from datetime import date, timedelta, datetime
 import os
 import psycopg
@@ -98,6 +98,20 @@ def move_week():
  except Exception as e:
   c.rollback(); c.close(); return jsonify(ok=False,error=str(e)),500
  c.close(); return jsonify(ok=True,target=str(target),moved=len(source_rows))
+
+@app.get('/backup.csv')
+def backup_csv():
+ import csv, io
+ c=db()
+ staff=c.execute('select id,name,active,staff_type,pay_type,hourly_rate,monthly_salary,sort_order from staff order by sort_order,id').fetchall()
+ shifts=c.execute('select id,staff_id,work_date,start,"end",break_start,break_end,break_min from shifts order by work_date,staff_id').fetchall()
+ c.close()
+ out=io.StringIO(); w=csv.writer(out)
+ w.writerow(['type','id','staff_id/name','work_date/active','start/staff_type','end/pay_type','break_start/hourly_rate','break_end/monthly_salary','break_min/sort_order'])
+ for s in staff: w.writerow(['staff',s['id'],s['name'],s['active'],s['staff_type'],s['pay_type'],s['hourly_rate'],s['monthly_salary'],s['sort_order']])
+ for r in shifts: w.writerow(['shift',r['id'],r['staff_id'],r['work_date'],r['start'],r['end'],r['break_start'] or '',r['break_end'] or '',r['break_min'] or 0])
+ filename='shift-backup-'+datetime.now().strftime('%Y%m%d-%H%M')+'.csv'
+ return Response(out.getvalue(),mimetype='text/csv; charset=utf-8',headers={'Content-Disposition':'attachment; filename='+filename})
 
 @app.post('/staff/reorder')
 def staff_reorder():
