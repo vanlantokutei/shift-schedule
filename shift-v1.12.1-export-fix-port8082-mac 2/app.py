@@ -40,9 +40,11 @@ def index():
  if m.month==12: month_end=date(m.year+1,1,1)-timedelta(days=1)
  else: month_end=date(m.year,m.month+1,1)-timedelta(days=1)
  month_rows=c.execute('select * from shifts where work_date between %s and %s',(str(month_start),str(month_end))).fetchall()
- kibo_rows=c.execute('select staff_id,submitted_at from kibo_submissions where week_start=%s',(str(m),)).fetchall()
+ # 希望 status always shows the upcoming week, same week employees see on /kibo.
+ kibo_week=monday()+timedelta(days=7); kibo_end=kibo_week+timedelta(days=6)
+ kibo_rows=c.execute('select staff_id,submitted_at from kibo_submissions where week_start=%s',(str(kibo_week),)).fetchall()
  # Backward compatibility: 希望 already submitted before submission tracking was added.
- legacy_kibo=c.execute('select distinct staff_id from shifts where work_date between %s and %s and is_kibo=1',(str(days[0]),str(days[-1]))).fetchall()
+ legacy_kibo=c.execute('select distinct staff_id from shifts where work_date between %s and %s and is_kibo=1',(str(kibo_week),str(kibo_end))).fetchall()
  c.close();kibo_status={r['staff_id']:r['submitted_at'] for r in kibo_rows}
  for r in legacy_kibo:kibo_status.setdefault(r['staff_id'],None)
  sm={(r['staff_id'],r['work_date']):r for r in rows}
@@ -52,7 +54,7 @@ def index():
  baito_monthly_pay=sum(round(monthly_totals[s['id']]*(s['hourly_rate'] or 0)) for s in staff if s['staff_type']=='baito')
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
- return render_template('index.html',staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+ return render_template('index.html',staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_week=kibo_week,kibo_end=kibo_end,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
 @app.get('/month')
 def month_view():
  try:
