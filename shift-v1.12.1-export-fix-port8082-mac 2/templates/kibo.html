@@ -4,7 +4,7 @@
  <header><div><b>希望シフト</b><span>Đăng ký lịch mong muốn</span></div></header>
  <section class="intro"><h1>Gửi lịch làm mong muốn</h1><p>Chọn tên, chọn tuần rồi nhập giờ có thể làm. Ngày không thể làm thì để trống.</p></section>
  <form method="get" class="picker">
-  <label>Tên nhân viên<select name="staff_id" required>{% for s in staff %}<option value="{{s.id}}" {% if s.id==selected_id %}selected{% endif %}>{{s.name}}</option>{% endfor %}</select></label>
+  <label>Tên nhân viên<select name="staff_id" required onchange="this.form.submit()">{% for s in staff %}<option value="{{s.id}}" {% if s.id==selected_id %}selected{% endif %}>{{s.name}}</option>{% endfor %}</select></label>
   <label>Chọn một ngày trong tuần<input type="date" name="week" value="{{days[0]}}" required></label>
   <button type="submit">Hiển thị tuần</button>
  </form>
@@ -12,7 +12,7 @@
  {% if error %}<div class="notice error">⚠ {{error}}</div>{% endif %}
  <form method="post" class="week-form">
   <input type="hidden" name="staff_id" value="{{selected_id}}"><input type="hidden" name="week" value="{{days[0]}}">
-  <div class="week-title">{{days[0].strftime('%d/%m')}} – {{days[-1].strftime('%d/%m/%Y')}}</div>
+  <div class="week-title"><strong>{% for s in staff %}{% if s.id==selected_id %}{{s.name}}{% endif %}{% endfor %}</strong> • {{days[0].strftime('%d/%m')}} – {{days[-1].strftime('%d/%m/%Y')}}</div>
   {% for d in days %}{% set r=existing.get(d|string) %}<div class="day-card {% if r and not r.is_kibo %}locked{% endif %}">
    <div class="day-name"><b>{{['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật'][loop.index0]}}</b><span>{{d.strftime('%d/%m')}}</span></div>
    {% if r and not r.is_kibo %}<div class="fixed">🔒 Quản lý đã chốt: {{r.start}}–{{r.end}}</div>
