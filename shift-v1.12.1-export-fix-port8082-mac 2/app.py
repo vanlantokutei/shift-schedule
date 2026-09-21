@@ -113,6 +113,8 @@ def staff_action():
   mx=c.execute('select coalesce(max(sort_order),-1)+1 n from staff').fetchone()['n'];sid=c.execute('insert into staff(name,sort_order) values(%s,%s) returning id',(x['name'].strip(),mx)).fetchone()['id']
  elif a=='rename' and x.get('name','').strip(): c.execute('update staff set name=%s where id=%s',(x['name'].strip(),x['id']));sid=x['id']
  elif a=='delete': c.execute('update staff set active=0 where id=%s',(x['id'],));sid=x['id']
+ elif a=='email':
+  c.execute('update staff set email=%s where id=%s',((x.get('email') or '').strip() or None,x['id']));sid=x['id']
  elif a=='update':
   c.execute('update staff set staff_type=%s,pay_type=%s,hourly_rate=%s,monthly_salary=%s,email=%s where id=%s',(x.get('staff_type','baito'),x.get('pay_type','hourly'),int(x.get('hourly_rate') or 0),int(x.get('monthly_salary') or 0),(x.get('email') or '').strip() or None,x['id']));sid=x['id']
  else:c.close();return jsonify(ok=False),400
