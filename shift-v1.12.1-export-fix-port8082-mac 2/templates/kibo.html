@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>希望シフト</title><link rel="stylesheet" href="/static/kibo.css"></head>
+<body><main class="kibo-page">
+ <header><div><b>希望シフト</b><span>Đăng ký lịch mong muốn</span></div></header>
+ <section class="intro"><h1>Gửi lịch làm mong muốn</h1><p>Chọn tên, chọn tuần rồi nhập giờ có thể làm. Ngày không thể làm thì để trống.</p></section>
+ <form method="get" class="picker">
+  <label>Tên nhân viên<select name="staff_id" required>{% for s in staff %}<option value="{{s.id}}" {% if s.id==selected_id %}selected{% endif %}>{{s.name}}</option>{% endfor %}</select></label>
+  <label>Chọn một ngày trong tuần<input type="date" name="week" value="{{days[0]}}" required></label>
+  <button type="submit">Hiển thị tuần</button>
+ </form>
+ {% if message %}<div class="notice success">✓ {{message}}</div>{% endif %}
+ {% if error %}<div class="notice error">⚠ {{error}}</div>{% endif %}
+ <form method="post" class="week-form">
+  <input type="hidden" name="staff_id" value="{{selected_id}}"><input type="hidden" name="week" value="{{days[0]}}">
+  <div class="week-title">{{days[0].strftime('%d/%m')}} – {{days[-1].strftime('%d/%m/%Y')}}</div>
+  {% for d in days %}{% set r=existing.get(d|string) %}<div class="day-card {% if r and not r.is_kibo %}locked{% endif %}">
+   <div class="day-name"><b>{{['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật'][loop.index0]}}</b><span>{{d.strftime('%d/%m')}}</span></div>
+   {% if r and not r.is_kibo %}<div class="fixed">🔒 Quản lý đã chốt: {{r.start}}–{{r.end}}</div>
+   {% else %}<div class="times"><label>Bắt đầu<input type="time" name="start_{{loop.index0}}" value="{{r.start if r else ''}}"></label><span>–</span><label>Kết thúc<input type="time" name="end_{{loop.index0}}" value="{{r.end if r else ''}}"></label></div>{% endif %}
+  </div>{% endfor %}
+  <button class="submit" type="submit">Gửi 希望シフト cả tuần</button>
+  <p class="help">Ca gửi lên sẽ có màu vàng trên bảng chính. Quản lý sẽ kiểm tra và chỉnh lại.</p>
+ </form>
+</main></body></html>
