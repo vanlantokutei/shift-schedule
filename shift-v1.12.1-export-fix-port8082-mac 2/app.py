@@ -16,6 +16,7 @@ def init():
   c.execute(sql)
  c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break_start TEXT")
  c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break_end TEXT")
+ c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS is_kibo INTEGER DEFAULT 0")
  if c.execute('select count(*) n from staff').fetchone()['n']==0:
   c.cursor().executemany('insert into staff(name) values(%s)', [(x,) for x in DEFAULT_STAFF])
  rows=c.execute('select id,sort_order from staff order by id').fetchall()
@@ -63,8 +64,48 @@ def month_view():
 def shift():
  x=request.get_json();c=db()
  if not x.get('start') or not x.get('end'):c.execute('delete from shifts where staff_id=%s and work_date=%s',(x['staff_id'],x['date']))
- else:c.execute('''insert into shifts(staff_id,work_date,start,"end",break_start,break_end,break_min) values(%s,%s,%s,%s,%s,%s,0) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=excluded.break_start,break_end=excluded.break_end''',(x['staff_id'],x['date'],x['start'],x['end'],x.get('break_start') or None,x.get('break_end') or None))
+ else:c.execute('''insert into shifts(staff_id,work_date,start,"end",break_start,break_end,break_min,is_kibo) values(%s,%s,%s,%s,%s,%s,0,0) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=excluded.break_start,break_end=excluded.break_end,is_kibo=0''',(x['staff_id'],x['date'],x['start'],x['end'],x.get('break_start') or None,x.get('break_end') or None))
  c.commit();c.close();return jsonify(ok=True)
+
+@app.route('/kibo',methods=['GET','POST'])
+def kibo():
+ c=db();staff=c.execute('select id,name from staff where active=1 order by sort_order,id').fetchall()
+ message=None; error=None; submitted=0; locked=0
+ raw_week=request.values.get('week')
+ try:m=monday(raw_week) if raw_week else monday()+timedelta(days=7)
+ except Exception:m=monday()+timedelta(days=7)
+ days=[m+timedelta(days=i) for i in range(7)]
+ try:selected_id=int(request.values.get('staff_id') or (staff[0]['id'] if staff else 0))
+ except Exception:selected_id=0
+ valid_ids={s['id'] for s in staff}
+ if selected_id not in valid_ids:selected_id=staff[0]['id'] if staff else 0
+ if request.method=='POST':
+  entries=[]
+  for i,d in enumerate(days):
+   start=(request.form.get(f'start_{i}') or '').strip();end=(request.form.get(f'end_{i}') or '').strip()
+   if bool(start)!=bool(end):error=f'{d.strftime("%d/%m")}: cần nhập đủ giờ bắt đầu và kết thúc';break
+   if start and end:
+    try:
+     a=datetime.strptime(start,'%H:%M');b=datetime.strptime(end,'%H:%M')
+     if b<=a:raise ValueError()
+    except Exception:error=f'{d.strftime("%d/%m")}: giờ kết thúc phải sau giờ bắt đầu';break
+   entries.append((str(d),start,end))
+  if not error and selected_id:
+   try:
+    for work_date,start,end in entries:
+     existing=c.execute('select is_kibo from shifts where staff_id=%s and work_date=%s',(selected_id,work_date)).fetchone()
+     if existing and not existing['is_kibo']:
+      locked+=1;continue
+     if start and end:
+      c.execute('''insert into shifts(staff_id,work_date,start,"end",break_min,break_start,break_end,is_kibo) values(%s,%s,%s,%s,0,NULL,NULL,1) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=NULL,break_end=NULL,is_kibo=1''',(selected_id,work_date,start,end));submitted+=1
+     else:c.execute('delete from shifts where staff_id=%s and work_date=%s and is_kibo=1',(selected_id,work_date))
+    c.commit();message=f'Đã gửi {submitted} ca 希望 cho tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}.'
+    if locked:message+=f' Có {locked} ngày quản lý đã chốt nên không bị ghi đè.'
+   except Exception:
+    c.rollback();error='Không lưu được 希望シフト. Vui lòng thử lại.'
+ rows=c.execute('select work_date,start,"end",is_kibo from shifts where staff_id=%s and work_date between %s and %s',(selected_id,str(days[0]),str(days[-1]))).fetchall() if selected_id else []
+ c.close();existing={r['work_date']:r for r in rows}
+ return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error)
 @app.post('/staff')
 def staff_action():
  x=request.get_json();c=db();a=x.get('action')
