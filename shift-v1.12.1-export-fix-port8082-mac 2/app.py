@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request, jsonify, Response
 from datetime import date, timedelta, datetime
+from email.message import EmailMessage
 import os
+import smtplib
 import psycopg
 from psycopg.rows import dict_row
 app=Flask(__name__); DB_URL=os.environ.get('DATABASE_URL')
@@ -33,6 +35,32 @@ def hours(r):
  if not r:return 0
  br=hdiff(r['break_start'],r['break_end']) if r['break_start'] and r['break_end'] else 0
  return max(0,hdiff(r['start'],r['end'])-br)
+def send_kibo_notification(staff_name,days,entries,submitted,locked):
+ smtp_user=(os.environ.get('SMTP_USER') or '').strip()
+ smtp_password=(os.environ.get('SMTP_PASSWORD') or '').strip()
+ notify_email=(os.environ.get('NOTIFY_EMAIL') or smtp_user).strip()
+ if not smtp_user or not smtp_password or not notify_email:
+  app.logger.warning('Kibo email skipped: SMTP configuration is missing')
+  return False
+ labels=['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật']
+ lines=[]
+ for i,(work_date,start,end) in enumerate(entries):
+  lines.append(f'{labels[i]} {days[i].strftime("%d/%m")}: {start}–{end}' if start and end else f'{labels[i]} {days[i].strftime("%d/%m")}: nghỉ / không đăng ký')
+ msg=EmailMessage()
+ msg['From']=smtp_user;msg['To']=notify_email
+ msg['Subject']=f'【希望シフト mới】{staff_name} • {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m")}'
+ body=[f'{staff_name} vừa gửi 希望シフト.',f'Tuần: {days[0].strftime("%d/%m/%Y")} – {days[-1].strftime("%d/%m/%Y")}',f'Số ca đăng ký: {submitted}']
+ if locked:body.append(f'Ngày đã được quản lý chốt: {locked}')
+ body.extend(['',*lines,'',f'Xem bảng quản lý: {request.host_url.rstrip("/")}/'])
+ msg.set_content('\n'.join(body))
+ try:
+  host=(os.environ.get('SMTP_HOST') or 'smtp.gmail.com').strip();port=int(os.environ.get('SMTP_PORT') or '465')
+  with smtplib.SMTP_SSL(host,port,timeout=15) as smtp:
+   smtp.login(smtp_user,smtp_password);smtp.send_message(msg)
+  return True
+ except Exception:
+  app.logger.exception('Could not send kibo notification email')
+  return False
 @app.route('/')
 def index():
  m=monday(request.args.get('week'));days=[m+timedelta(days=i) for i in range(7)];c=db();staff=c.execute('select * from staff where active=1 order by sort_order,id').fetchall();rows=c.execute('select * from shifts where work_date between %s and %s',(str(days[0]),str(days[-1]))).fetchall();# Monthly totals for the month containing the week start.
@@ -110,6 +138,9 @@ def kibo():
     c.execute('''insert into kibo_submissions(staff_id,week_start,submitted_at) values(%s,%s,CURRENT_TIMESTAMP) on conflict(staff_id,week_start) do update set submitted_at=CURRENT_TIMESTAMP''',(selected_id,str(days[0])))
     c.commit();message=f'Đã gửi {submitted} ca 希望 cho tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}.'
     if locked:message+=f' Có {locked} ngày quản lý đã chốt nên không bị ghi đè.'
+    staff_name=next((s['name'] for s in staff if s['id']==selected_id),'Nhân viên')
+    if not send_kibo_notification(staff_name,days,entries,submitted,locked):
+     message+=' Lịch đã lưu nhưng email thông báo chưa gửi được.'
    except Exception:
     c.rollback();error='Không lưu được 希望シフト. Vui lòng thử lại.'
  rows=c.execute('select work_date,start,"end",is_kibo from shifts where staff_id=%s and work_date between %s and %s',(selected_id,str(days[0]),str(days[-1]))).fetchall() if selected_id else []
