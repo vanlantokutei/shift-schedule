@@ -7,9 +7,10 @@
 <div class="legend"><b>Chú thích:</b><span><i class="lg green"></i>Đã xếp ca</span><span><i class="lg orange"></i>Có giờ nghỉ</span><span><i class="lg gray"></i>Chưa xếp</span><span><i class="lg ft"></i>正社員</span><span><i class="lg red"></i>Cần kiểm tra</span><span><i class="lg blue"></i>Đang sửa</span></div><div id="status"></div></main>
 <div id="editor" class="editor hidden"><b>Sửa ca nhanh</b><small class="hint">Gõ 7 → 07:00 • 730 → 07:30 • Enter/Tab để nhảy ô</small><label>Giờ làm <span><input id="st" placeholder="07:30"> – <input id="en" placeholder="17:30"></span></label><label>Giờ nghỉ <span><input id="bs" placeholder="12:00"> – <input id="be" placeholder="13:00"></span></label><div><button id="clear">Nghỉ / Xóa ca</button><button id="cancel">Hủy</button><button id="save">Lưu ngay</button></div></div>
 <div id="staffEditor" class="editor hidden"><b>Cài nhân viên</b><label>Loại <select id="staffType"><option value="baito">Baito</option><option value="fulltime">正社員</option></select></label><label>Cách tính <select id="payType"><option value="hourly">時給 / giờ</option><option value="monthly">月給 / tháng</option></select></label><label>時給 <span>¥ <input id="hourly" type="number" step="10"></span></label><label>月給 <span>¥ <input id="monthly" type="number" step="1000"></span></label><div><button id="staffCancel">Hủy</button><button id="staffSave">Lưu</button></div></div>
+<div id="weekModal" class="week-modal hidden" role="dialog" aria-modal="true" aria-labelledby="weekModalTitle"><div class="week-modal-card"><b id="weekModalTitle">Sửa ngày của tuần</b><p>Chọn một ngày bất kỳ trong tuần mới. Toàn bộ ca làm và giờ nghỉ sẽ được chuyển theo.</p><label>Ngày mới<input id="weekDate" type="date" value="{{days[0]}}"></label><div class="week-modal-actions"><button type="button" id="weekCancel">Hủy</button><button type="button" id="weekMove">Chuyển lịch</button></div></div></div>
 <script>
 let cell=null,staffBtn=null,saving=false,dirty=false;
-const ed=document.querySelector('#editor'),sed=document.querySelector('#staffEditor'),status=document.querySelector('#status');
+const ed=document.querySelector('#editor'),sed=document.querySelector('#staffEditor'),status=document.querySelector('#status'),weekModal=document.querySelector('#weekModal'),weekDate=document.querySelector('#weekDate');
 const inputs=[st,en,bs,be];
 function norm(v){
  v=(v||'').trim().replace(/[^0-9:]/g,''); if(!v)return '';
@@ -61,21 +62,26 @@ document.querySelector('#exportPng').onclick=e=>{e.preventDefault();exportPNG()}
 const restoreBackupBtn=document.querySelector('#restoreBackupBtn'),restoreBackupFile=document.querySelector('#restoreBackupFile');
 restoreBackupBtn.onclick=()=>{if(confirm('Khôi phục từ file backup? Dữ liệu trong file sẽ ghi đè các ca trùng ngày.'))restoreBackupFile.click()};
 restoreBackupFile.onchange=async()=>{if(!restoreBackupFile.files[0])return;const fd=new FormData();fd.append('backup',restoreBackupFile.files[0]);restoreBackupBtn.disabled=true;restoreBackupBtn.textContent='Đang khôi phục...';try{const r=await fetch('/restore-backup',{method:'POST',body:fd});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Khôi phục thất bại');alert('Khôi phục xong: '+d.staff+' nhân viên, '+d.shifts+' ca làm.');location.reload()}catch(e){alert('Không khôi phục được: '+e.message);restoreBackupBtn.disabled=false;restoreBackupBtn.textContent='↩ Khôi phục backup'}};
-changeWeekBtn.onclick=async()=>{
+changeWeekBtn.onclick=()=>{
  const current='{{days[0]}}';
- const picked=prompt('Chọn ngày mới cho lịch đã xếp (YYYY-MM-DD).\nCó thể chọn bất kỳ ngày nào trong tuần mới:', current);
- if(!picked||picked===current)return;
- if(!/^\d{4}-\d{2}-\d{2}$/.test(picked)){alert('Ngày phải có dạng YYYY-MM-DD, ví dụ 2026-09-21');return}
+ weekDate.value=current;weekModal.classList.remove('hidden');setTimeout(()=>weekDate.focus(),0);
+};
+weekCancel.onclick=()=>weekModal.classList.add('hidden');
+weekModal.onclick=e=>{if(e.target===weekModal)weekModal.classList.add('hidden')};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')weekModal.classList.add('hidden')});
+weekMove.onclick=async()=>{
+ const current='{{days[0]}}',picked=weekDate.value;
+ if(!picked){status.textContent='⚠️ Hãy chọn ngày mới';return}
+ if(picked===current){weekModal.classList.add('hidden');return}
  if(!confirm('Chuyển TOÀN BỘ lịch {{days[0].strftime("%d/%m")}}–{{days[-1].strftime("%d/%m/%Y")}} sang tuần chứa '+picked+'?\n\nGiờ làm và giờ nghỉ sẽ được giữ nguyên.'))return;
+ weekMove.disabled=true;weekMove.textContent='Đang chuyển…';
  let body={source_week:current,target_date:picked,force:false};
- let r=await fetch('/move-week',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
- let data=await r.json();
- if(r.status===409&&data.conflict){
+ try{let r=await fetch('/move-week',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let data=await r.json();if(r.status===409&&data.conflict){
    if(!confirm('Tuần đích đã có '+data.count+' ca. Ghi đè lịch tuần đích?'))return;
    body.force=true; r=await fetch('/move-week',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); data=await r.json();
- }
- if(!r.ok||!data.ok){alert('Không chuyển được lịch: '+(data.error||'lỗi không xác định'));return}
- location='/?week='+data.target;
+ }if(!r.ok||!data.ok){alert('Không chuyển được lịch: '+(data.error||'lỗi không xác định'));return}location='/?week='+data.target}
+ catch(e){alert('Không kết nối được máy chủ. Vui lòng thử lại.')}
+ finally{weekMove.disabled=false;weekMove.textContent='Chuyển lịch'}
 };
 
 window.addEventListener('beforeunload',e=>{if(dirty&&!saving){e.preventDefault();e.returnValue=''}});
