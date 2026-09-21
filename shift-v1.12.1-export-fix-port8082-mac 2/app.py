@@ -41,7 +41,11 @@ def index():
  else: month_end=date(m.year,m.month+1,1)-timedelta(days=1)
  month_rows=c.execute('select * from shifts where work_date between %s and %s',(str(month_start),str(month_end))).fetchall()
  kibo_rows=c.execute('select staff_id,submitted_at from kibo_submissions where week_start=%s',(str(m),)).fetchall()
- c.close();kibo_status={r['staff_id']:r['submitted_at'] for r in kibo_rows};sm={(r['staff_id'],r['work_date']):r for r in rows}
+ # Backward compatibility: 希望 already submitted before submission tracking was added.
+ legacy_kibo=c.execute('select distinct staff_id from shifts where work_date between %s and %s and is_kibo=1',(str(days[0]),str(days[-1]))).fetchall()
+ c.close();kibo_status={r['staff_id']:r['submitted_at'] for r in kibo_rows}
+ for r in legacy_kibo:kibo_status.setdefault(r['staff_id'],None)
+ sm={(r['staff_id'],r['work_date']):r for r in rows}
  totals={s['id']:sum(hours(sm.get((s['id'],str(d)))) for d in days) for s in staff}
  monthly_totals={s['id']:sum(hours(r) for r in month_rows if r['staff_id']==s['id']) for s in staff}
  pay={s['id']:(round(monthly_totals[s['id']]*(s['hourly_rate'] or 0)) if s['pay_type']=='hourly' else (s['monthly_salary'] or 0)) for s in staff}
