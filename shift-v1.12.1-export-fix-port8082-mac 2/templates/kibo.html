@@ -10,7 +10,7 @@
  </form>
  {% if message %}<div class="notice success">✓ {{message}}</div>{% endif %}
  {% if error %}<div class="notice error">⚠ {{error}}</div>{% endif %}
- <form method="post" class="week-form">
+ <form method="post" action="/kibo" class="week-form" id="kibo-form">
   <input type="hidden" name="staff_id" value="{{selected_id}}"><input type="hidden" name="week" value="{{days[0]}}">
   <div class="week-title"><strong>{% for s in staff %}{% if s.id==selected_id %}{{s.name}}{% endif %}{% endfor %}</strong> • {{days[0].strftime('%d/%m')}} – {{days[-1].strftime('%d/%m/%Y')}}</div>
   {% for d in days %}{% set r=existing.get(d|string) %}<div class="day-card {% if r and not r.is_kibo %}locked{% endif %}">
@@ -18,7 +18,7 @@
    {% if r and not r.is_kibo %}<div class="fixed">🔒 Quản lý đã chốt: {{r.start}}–{{r.end}}</div>
    {% else %}<div class="times"><label>Bắt đầu<select name="start_{{loop.index0}}"><option value="">--:--</option>{% for h in range(24) %}{% for m in [0,15,30,45] %}{% set t='%02d:%02d'|format(h,m) %}<option value="{{t}}" {% if r and r.start==t %}selected{% endif %}>{{t}}</option>{% endfor %}{% endfor %}</select></label><span>–</span><label>Kết thúc<select name="end_{{loop.index0}}"><option value="">--:--</option>{% for h in range(24) %}{% for m in [0,15,30,45] %}{% set t='%02d:%02d'|format(h,m) %}<option value="{{t}}" {% if r and r.end==t %}selected{% endif %}>{{t}}</option>{% endfor %}{% endfor %}</select></label></div>{% endif %}
   </div>{% endfor %}
-  <button class="submit" type="submit">Gửi 希望シフト cả tuần</button>
+  <button class="submit" type="submit" form="kibo-form">Gửi 希望シフト cả tuần</button>
   <p class="help">Phút chọn theo nấc 00, 15, 30, 45. Ca gửi lên sẽ có màu vàng trên bảng chính để quản lý kiểm tra và chỉnh lại.</p>
  </form>
 </main></body></html>
