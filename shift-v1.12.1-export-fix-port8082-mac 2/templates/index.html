@@ -82,5 +82,18 @@ weekMove.onclick=async()=>{
  finally{weekMove.disabled=false;weekMove.textContent='Chuyển lịch'}
 };
 
+// Tự cập nhật tiết kiệm pin: chỉ kiểm tra khi trang đang hiển thị.
+let autoRefreshTimer=null;
+function startAutoRefresh(){
+ clearInterval(autoRefreshTimer);
+ if(document.visibilityState!=='visible')return;
+ autoRefreshTimer=setInterval(()=>{if(document.visibilityState==='visible'&&!dirty&&!saving&&!document.querySelector('.editor:not(.hidden)'))location.reload()},30000);
+}
+document.addEventListener('visibilitychange',()=>{
+ if(document.visibilityState==='visible'){if(!dirty&&!saving)location.reload()}
+ else clearInterval(autoRefreshTimer);
+});
+startAutoRefresh();
+
 window.addEventListener('beforeunload',e=>{if(dirty&&!saving){e.preventDefault();e.returnValue=''}});
 </script></body></html>
