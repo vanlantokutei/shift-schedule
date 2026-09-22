@@ -5,6 +5,7 @@ import os
 import smtplib
 import json
 import urllib.request
+import urllib.error
 import psycopg
 from psycopg.rows import dict_row
 app=Flask(__name__); DB_URL=os.environ.get('DATABASE_URL')
@@ -56,6 +57,11 @@ def send_kibo_notification(staff_name,days,entries,submitted,locked):
    req=urllib.request.Request('https://api.resend.com/emails',data=payload,headers={'Authorization':f'Bearer {resend_key}','Content-Type':'application/json'},method='POST')
    with urllib.request.urlopen(req,timeout=15) as resp:
     if 200 <= resp.status < 300:return True
+   return False
+  except urllib.error.HTTPError as e:
+   try: detail=e.read().decode('utf-8','replace')
+   except Exception: detail=''
+   app.logger.error('Resend API HTTP %s: %s',e.code,detail)
    return False
   except Exception:
    app.logger.exception('Could not send kibo notification via Resend')
