@@ -37,7 +37,7 @@ def hours(r):
  return max(0,hdiff(r['start'],r['end'])-br)
 def send_kibo_notification(staff_name,days,entries,submitted,locked):
  smtp_user=(os.environ.get('SMTP_USER') or '').strip()
- smtp_password=(os.environ.get('SMTP_PASSWORD') or '').strip()
+ smtp_password=(os.environ.get('SMTP_PASSWORD') or '').replace(' ','').strip()
  notify_email=(os.environ.get('NOTIFY_EMAIL') or smtp_user).strip()
  if not smtp_user or not smtp_password or not notify_email:
   app.logger.warning('Kibo email skipped: SMTP configuration is missing')
@@ -55,8 +55,12 @@ def send_kibo_notification(staff_name,days,entries,submitted,locked):
  msg.set_content('\n'.join(body))
  try:
   host=(os.environ.get('SMTP_HOST') or 'smtp.gmail.com').strip();port=int(os.environ.get('SMTP_PORT') or '465')
-  with smtplib.SMTP_SSL(host,port,timeout=15) as smtp:
-   smtp.login(smtp_user,smtp_password);smtp.send_message(msg)
+  if port==587:
+   with smtplib.SMTP(host,port,timeout=15) as smtp:
+    smtp.ehlo();smtp.starttls();smtp.ehlo();smtp.login(smtp_user,smtp_password);smtp.send_message(msg)
+  else:
+   with smtplib.SMTP_SSL(host,port,timeout=15) as smtp:
+    smtp.login(smtp_user,smtp_password);smtp.send_message(msg)
   return True
  except Exception:
   app.logger.exception('Could not send kibo notification email')
