@@ -95,6 +95,7 @@ def index():
  # 希望 status always shows the upcoming week, same week employees see on /kibo.
  kibo_week=monday()+timedelta(days=7); kibo_end=kibo_week+timedelta(days=6)
  kibo_rows=c.execute('select staff_id,submitted_at from kibo_submissions where week_start=%s',(str(kibo_week),)).fetchall()
+ latest_kibo=max((r['submitted_at'] for r in kibo_rows if r['submitted_at']),default=None)
  # Backward compatibility: 希望 already submitted before submission tracking was added.
  legacy_kibo=c.execute('select distinct staff_id from shifts where work_date between %s and %s and is_kibo=1',(str(kibo_week),str(kibo_end))).fetchall()
  c.close();kibo_status={r['staff_id']:r['submitted_at'] for r in kibo_rows}
@@ -106,7 +107,7 @@ def index():
  baito_monthly_pay=sum(round(monthly_totals[s['id']]*(s['hourly_rate'] or 0)) for s in staff if s['staff_type']=='baito')
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
- return render_template('index.html',staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_week=kibo_week,kibo_end=kibo_end,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+ return render_template('index.html',staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
 @app.get('/month')
 def month_view():
  try:
@@ -163,8 +164,7 @@ def kibo():
     c.commit();message=f'Đã gửi {submitted} ca 希望 cho tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}.'
     if locked:message+=f' Có {locked} ngày quản lý đã chốt nên không bị ghi đè.'
     staff_name=next((s['name'] for s in staff if s['id']==selected_id),'Nhân viên')
-    if not send_kibo_notification(staff_name,days,entries,submitted,locked):
-     message+=' Lịch đã lưu nhưng email thông báo chưa gửi được.'
+    # Notification is shown directly on the manager page; no external email service required.
    except Exception:
     c.rollback();error='Không lưu được 希望シフト. Vui lòng thử lại.'
  rows=c.execute('select work_date,start,"end",is_kibo from shifts where staff_id=%s and work_date between %s and %s',(selected_id,str(days[0]),str(days[-1]))).fetchall() if selected_id else []
