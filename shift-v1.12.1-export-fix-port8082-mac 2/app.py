@@ -77,8 +77,8 @@ def send_kibo_emails(staff_name,staff_email,days,entries,submitted,locked):
  manager_body='\n'.join([f'{staff_name} vừa gửi 希望シフト.',f'Tuần: {week}',f'Số ca đăng ký: {submitted}',*([f'Ngày đã được quản lý chốt: {locked}'] if locked else []),'',*lines,'',f'Xem bảng quản lý: {request.host_url.rstrip("/")}/'])
  if manager:send_email(manager,f'【希望シフト mới】{staff_name} • {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m")}',manager_body)
  if staff_email:
-  staff_body='\n'.join([f'{staff_name}さん', '', '希望シフトの登録が完了しました。',f'対象週: {week}',f'登録したシフト数: {submitted}','',*lines,'','ご提出ありがとうございます。'])
-  return send_email(staff_email,f'【希望シフト】登録完了 • {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m")}',staff_body)
+  staff_body='\n'.join([f'Chào {staff_name},','','Bạn đã đăng ký lịch làm việc mong muốn (希望シフト) thành công.','','Hệ thống đã ghi nhận lịch bạn vừa gửi.',f'Tuần: {week}',f'Số ca đăng ký: {submitted}','',*lines,'','Cảm ơn bạn đã đăng ký lịch đúng hạn.','','ベト屋築地店'])
+  return send_email(staff_email,'Xác nhận đã đăng ký lịch làm việc',staff_body)
  return False
 @app.route('/')
 def index():
