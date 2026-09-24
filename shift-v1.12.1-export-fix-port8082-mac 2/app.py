@@ -38,41 +38,22 @@ def hours(r):
  if not r:return 0
  br=hdiff(r['break_start'],r['break_end']) if r['break_start'] and r['break_end'] else 0
  return max(0,hdiff(r['start'],r['end'])-br)
-def send_kibo_notification(staff_name,days,entries,submitted,locked):
- notify_email=(os.environ.get('NOTIFY_EMAIL') or os.environ.get('SMTP_USER') or '').strip()
+def send_email(to_email,subject,text_body):
+ to_email=(to_email or '').strip()
+ if not to_email:return False
  resend_key=(os.environ.get('RESEND_API_KEY') or '').strip()
- labels=['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật']
- lines=[]
- for i,(work_date,start,end) in enumerate(entries):
-  lines.append(f'{labels[i]} {days[i].strftime("%d/%m")}: {start}–{end}' if start and end else f'{labels[i]} {days[i].strftime("%d/%m")}: nghỉ / không đăng ký')
- subject=f'【希望シフト mới】{staff_name} • {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m")}'
- body=[f'{staff_name} vừa gửi 希望シフト.',f'Tuần: {days[0].strftime("%d/%m/%Y")} – {days[-1].strftime("%d/%m/%Y")}',f'Số ca đăng ký: {submitted}']
- if locked:body.append(f'Ngày đã được quản lý chốt: {locked}')
- body.extend(['',*lines,'',f'Xem bảng quản lý: {request.host_url.rstrip("/")}/'])
- text_body='\n'.join(body)
- # Prefer Resend HTTPS API on Render because outbound SMTP can be blocked.
- if resend_key and notify_email:
+ if resend_key:
   try:
-   payload=json.dumps({'from':(os.environ.get('RESEND_FROM') or 'Shift Schedule <onboarding@resend.dev>').strip(),'to':[notify_email],'subject':subject,'text':text_body}).encode('utf-8')
+   payload=json.dumps({'from':(os.environ.get('RESEND_FROM') or 'Shift Schedule <onboarding@resend.dev>').strip(),'to':[to_email],'subject':subject,'text':text_body}).encode('utf-8')
    req=urllib.request.Request('https://api.resend.com/emails',data=payload,headers={'Authorization':f'Bearer {resend_key}','Content-Type':'application/json'},method='POST')
    with urllib.request.urlopen(req,timeout=15) as resp:
     if 200 <= resp.status < 300:return True
-   return False
-  except urllib.error.HTTPError as e:
-   try: detail=e.read().decode('utf-8','replace')
-   except Exception: detail=''
-   app.logger.error('Resend API HTTP %s: %s',e.code,detail)
-   return False
   except Exception:
-   app.logger.exception('Could not send kibo notification via Resend')
-   return False
- # SMTP fallback for installations that have not configured Resend.
+   app.logger.exception('Could not send email via Resend; trying SMTP fallback')
  smtp_user=(os.environ.get('SMTP_USER') or '').strip()
  smtp_password=(os.environ.get('SMTP_PASSWORD') or '').replace(' ','').strip()
- if not smtp_user or not smtp_password or not notify_email:
-  app.logger.warning('Kibo email skipped: RESEND_API_KEY or SMTP configuration is missing')
-  return False
- msg=EmailMessage();msg['From']=smtp_user;msg['To']=notify_email;msg['Subject']=subject;msg.set_content(text_body)
+ if not smtp_user or not smtp_password:return False
+ msg=EmailMessage();msg['From']=smtp_user;msg['To']=to_email;msg['Subject']=subject;msg.set_content(text_body)
  try:
   host=(os.environ.get('SMTP_HOST') or 'smtp.gmail.com').strip();port=int(os.environ.get('SMTP_PORT') or '465')
   if port==587:
@@ -83,8 +64,22 @@ def send_kibo_notification(staff_name,days,entries,submitted,locked):
     smtp.login(smtp_user,smtp_password);smtp.send_message(msg)
   return True
  except Exception:
-  app.logger.exception('Could not send kibo notification email')
+  app.logger.exception('Could not send email via SMTP')
   return False
+
+def send_kibo_emails(staff_name,staff_email,days,entries,submitted,locked):
+ labels=['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật']
+ lines=[]
+ for i,(work_date,start,end) in enumerate(entries):
+  lines.append(f'{labels[i]} {days[i].strftime("%d/%m")}: {start}–{end}' if start and end else f'{labels[i]} {days[i].strftime("%d/%m")}: nghỉ / không đăng ký')
+ week=f'{days[0].strftime("%d/%m/%Y")} – {days[-1].strftime("%d/%m/%Y")}'
+ manager=(os.environ.get('NOTIFY_EMAIL') or os.environ.get('SMTP_USER') or '').strip()
+ manager_body='\n'.join([f'{staff_name} vừa gửi 希望シフト.',f'Tuần: {week}',f'Số ca đăng ký: {submitted}',*([f'Ngày đã được quản lý chốt: {locked}'] if locked else []),'',*lines,'',f'Xem bảng quản lý: {request.host_url.rstrip("/")}/'])
+ if manager:send_email(manager,f'【希望シフト mới】{staff_name} • {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m")}',manager_body)
+ if staff_email:
+  staff_body='\n'.join([f'{staff_name}さん', '', '希望シフトの登録が完了しました。',f'対象週: {week}',f'登録したシフト数: {submitted}','',*lines,'','ご提出ありがとうございます。'])
+  return send_email(staff_email,f'【希望シフト】登録完了 • {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m")}',staff_body)
+ return False
 @app.route('/')
 def index():
  m=monday(request.args.get('week'));days=[m+timedelta(days=i) for i in range(7)];c=db();staff=c.execute('select * from staff where active=1 order by sort_order,id').fetchall();rows=c.execute('select * from shifts where work_date between %s and %s',(str(days[0]),str(days[-1]))).fetchall();# Monthly totals for the month containing the week start.
@@ -129,7 +124,7 @@ def shift():
 
 @app.route('/kibo',methods=['GET','POST'])
 def kibo():
- c=db();staff=c.execute('select id,name from staff where active=1 order by sort_order,id').fetchall()
+ c=db();staff=c.execute('select id,name,email from staff where active=1 order by sort_order,id').fetchall()
  message=None; error=None; submitted=0; locked=0
  raw_week=request.values.get('week')
  try:m=monday(raw_week) if raw_week else monday()+timedelta(days=7)
@@ -162,8 +157,14 @@ def kibo():
     c.execute('''insert into kibo_submissions(staff_id,week_start,submitted_at) values(%s,%s,CURRENT_TIMESTAMP) on conflict(staff_id,week_start) do update set submitted_at=CURRENT_TIMESTAMP''',(selected_id,str(days[0])))
     c.commit();message=f'Đã gửi {submitted} ca 希望 cho tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}.'
     if locked:message+=f' Có {locked} ngày quản lý đã chốt nên không bị ghi đè.'
-    staff_name=next((s['name'] for s in staff if s['id']==selected_id),'Nhân viên')
-    # Notification is shown directly on the manager page; no external email service required.
+    selected_staff=next((s for s in staff if s['id']==selected_id),None)
+    staff_name=selected_staff['name'] if selected_staff else 'Nhân viên'
+    staff_email=selected_staff['email'] if selected_staff else None
+    email_ok=send_kibo_emails(staff_name,staff_email,days,entries,submitted,locked)
+    if staff_email:
+     message+=(' Email xác nhận đã được gửi.' if email_ok else ' Đã lưu lịch nhưng chưa gửi được email xác nhận.')
+    else:
+     message+=' Nhân viên này chưa có email nên chưa thể gửi xác nhận.'
    except Exception:
     c.rollback();error='Không lưu được 希望シフト. Vui lòng thử lại.'
  rows=c.execute('select work_date,start,"end",is_kibo from shifts where staff_id=%s and work_date between %s and %s',(selected_id,str(days[0]),str(days[-1]))).fetchall() if selected_id else []
