@@ -3,6 +3,7 @@
 <body><main class="kibo-page">
  <header><div><b>希望シフト</b><span>Đăng ký lịch mong muốn</span></div></header>
  <section class="intro"><h1>Gửi lịch làm mong muốn</h1><p>Chọn tên, chọn tuần rồi nhập giờ có thể làm. Ngày không thể làm thì để trống.</p></section>
+ <button type="button" class="share-btn" onclick="shareKibo()">🔗 Chia sẻ trang đăng ký</button>
  <form method="get" class="picker">
   <label>Tên nhân viên<select name="staff_id" required onchange="this.form.submit()">{% for s in staff %}<option value="{{s.id}}" {% if s.id==selected_id %}selected{% endif %}>{{s.name}}</option>{% endfor %}</select></label>
   <label>Chọn một ngày trong tuần<input type="date" name="week" value="{{days[0]}}" required></label>
@@ -21,4 +22,24 @@
   <button class="submit" type="submit" form="kibo-form">Gửi 希望シフト cả tuần</button>
   <p class="help">Phút chọn theo nấc 00, 15, 30, 45. Ca gửi lên sẽ có màu vàng trên bảng chính để quản lý kiểm tra và chỉnh lại.</p>
  </form>
-</main></body></html>
+</main>
+<script>
+async function shareKibo(){
+  const data={title:'希望シフト',text:'Đăng ký lịch làm mong muốn tại đây:',url:window.location.href};
+  try{
+    if(navigator.share){await navigator.share(data);}
+    else{
+      await navigator.clipboard.writeText(window.location.href);
+      alert('Đã copy link trang đăng ký!');
+    }
+  }catch(e){
+    if(e && e.name==='AbortError') return;
+    try{await navigator.clipboard.writeText(window.location.href);alert('Đã copy link trang đăng ký!');}
+    catch(_){prompt('Copy link này:',window.location.href);}
+  }
+}
+</script>
+<style>
+.share-btn{display:block;width:100%;max-width:520px;margin:0 auto 16px;padding:13px 16px;border:0;border-radius:12px;font-weight:700;font-size:16px;cursor:pointer}
+</style>
+</body></html>
