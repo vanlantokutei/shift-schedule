@@ -89,11 +89,11 @@ def index():
  month_rows=c.execute('select * from shifts where work_date between %s and %s',(str(month_start),str(month_end))).fetchall()
  # 希望 status always shows the upcoming week, same week employees see on /kibo.
  kibo_week=monday()+timedelta(days=7); kibo_end=kibo_week+timedelta(days=6)
- kibo_rows=c.execute('select staff_id,submitted_at from kibo_submissions where week_start=%s',(str(kibo_week),)).fetchall()
+ kibo_rows=c.execute("select staff_id,submitted_at,(submitted_at + interval '9 hours') as submitted_at_jst from kibo_submissions where week_start=%s",(str(kibo_week),)).fetchall()
  latest_kibo=max((r['submitted_at'] for r in kibo_rows if r['submitted_at']),default=None)
  # Backward compatibility: 希望 already submitted before submission tracking was added.
  legacy_kibo=c.execute('select distinct staff_id from shifts where work_date between %s and %s and is_kibo=1',(str(kibo_week),str(kibo_end))).fetchall()
- c.close();kibo_status={r['staff_id']:r['submitted_at'] for r in kibo_rows}
+ c.close();kibo_status={r['staff_id']:r['submitted_at_jst'] for r in kibo_rows}
  sm={(r['staff_id'],r['work_date']):r for r in rows}
  totals={s['id']:sum(hours(sm.get((s['id'],str(d)))) for d in days) for s in staff}
  monthly_totals={s['id']:sum(hours(r) for r in month_rows if r['staff_id']==s['id']) for s in staff}
