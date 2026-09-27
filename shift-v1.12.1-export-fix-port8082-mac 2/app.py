@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from datetime import date, timedelta, datetime
+from zoneinfo import ZoneInfo
 import sqlite3
 app=Flask(__name__); DB='shift.db'
 DEFAULT_STAFF=['LÂN','SƯƠNG','Thoa','MINH ANH','HƯNG','THẢO','THƯ','Xuân','Nhi','Hiền','Ngân','HIỀN Mới','Trang']
@@ -20,7 +21,7 @@ def init():
   for i,r in enumerate(rows): c.execute('update staff set sort_order=? where id=?',(i,r['id']))
  c.commit();c.close()
 def monday(s=None):
- d=datetime.strptime(s,'%Y-%m-%d').date() if s else date.today();return d-timedelta(days=d.weekday())
+ d=datetime.strptime(s,'%Y-%m-%d').date() if s else datetime.now(ZoneInfo('Asia/Tokyo')).date();return d-timedelta(days=d.weekday())
 def hdiff(a,b):
  if not a or not b:return 0
  x=datetime.strptime(a,'%H:%M');y=datetime.strptime(b,'%H:%M');return max(0,(y-x).seconds/3600)
