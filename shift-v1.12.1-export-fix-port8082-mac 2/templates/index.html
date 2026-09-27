@@ -97,4 +97,23 @@ weekMove.onclick=async()=>{
  }
 };
 
+// Automatically follow the new week when this page is left open.
+// Explicitly selected historical/future weeks remain unchanged.
+const autoFollowWeek = !new URLSearchParams(location.search).has('week');
+const displayedWeek = '{{days[0]}}';
+function tokyoWeekStart(){
+ const parts = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+ const val = key => parts.find(p=>p.type===key).value;
+ const d = new Date(Date.UTC(+val('year'),+val('month')-1,+val('day')));
+ d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);
+ return d.toISOString().slice(0,10);
+}
+function followCurrentWeek(){
+ if(!autoFollowWeek || tokyoWeekStart()===displayedWeek || saving ||
+    !ed.classList.contains('hidden') || !sed.classList.contains('hidden') ||
+    !weekModal.classList.contains('hidden')) return;
+ location.reload();
+}
+setInterval(followCurrentWeek,60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)followCurrentWeek()});
 </script></body></html>
