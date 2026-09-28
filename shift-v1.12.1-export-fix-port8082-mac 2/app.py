@@ -239,7 +239,7 @@ def kibo():
       c.execute('''insert into shifts(staff_id,work_date,start,"end",break_min,break_start,break_end,is_kibo) values(%s,%s,%s,%s,0,NULL,NULL,1) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=NULL,break_end=NULL,is_kibo=1''',(selected_id,work_date,start,end));submitted+=1
      else:c.execute('delete from shifts where staff_id=%s and work_date=%s and is_kibo=1',(selected_id,work_date))
     c.execute('''insert into kibo_submissions(staff_id,week_start,submitted_at) values(%s,%s,CURRENT_TIMESTAMP) on conflict(staff_id,week_start) do update set submitted_at=CURRENT_TIMESTAMP''',(selected_id,str(days[0])))
-    c.commit();message=f'Cảm ơn bạn đã đăng ký lịch làm! Đã gửi {submitted} ca 希望 cho tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}.'
+    c.commit();message=f'Cảm ơn bạn đã đăng ký lịch làm! 🌸 Chúng tôi đã ghi nhận lịch mong muốn của bạn. Lịch làm chính thức sẽ được thông báo sau khi quản lý sắp xếp và chốt lịch nhé! Đã ghi nhận {submitted} ca 希望 cho tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}.'
     if locked:message+=f' Có {locked} ngày quản lý đã chốt nên không bị ghi đè.'
     selected_staff=next((s for s in staff if s['id']==selected_id),None)
     staff_name=selected_staff['name'] if selected_staff else 'Nhân viên'
