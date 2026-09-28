@@ -264,7 +264,7 @@ def kibo():
  rows=c.execute('select work_date,start,"end",is_kibo from shifts where staff_id=%s and work_date between %s and %s',(selected_id,str(days[0]),str(days[-1]))).fetchall() if selected_id else []
  c.close();existing={r['work_date']:r for r in rows}
  if request.method=='POST':app.logger.info('KIBO_REQUEST_METRICS total_ms=%.0f db_connect_ms=%.0f',(perf_counter()-kibo_t0)*1000,kibo_db_connect_ms)
- return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error,kibo_closed=kibo_closed,kibo_before_open=kibo_before_open,open_text=open_text,deadline_text=deadline_text)
+ return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error,kibo_closed=kibo_closed,kibo_before_open=kibo_before_open,open_text=open_text,deadline_text=deadline_text,kibo_open_iso=kibo_open.isoformat(),kibo_deadline_iso=kibo_deadline.isoformat())
 @app.post('/staff')
 def staff_action():
  x=request.get_json();c=db();a=x.get('action')
