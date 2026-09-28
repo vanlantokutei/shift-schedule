@@ -22,8 +22,10 @@
   <label>Chọn một ngày trong tuần<input type="date" name="week" value="{{days[0]}}" required></label>
   <button type="submit">Hiển thị tuần</button>
  </form>
- {% if error %}<div class="notice error">⚠ {{error}}</div>{% endif %}
+ <div class="notice {% if kibo_closed %}error{% endif %}" role="status">{% if kibo_closed %}🔒 Đã hết hạn đăng ký lịch. Vui lòng liên hệ quản lý nếu cần thay đổi.{% else %}🕙 Hạn đăng ký: {{deadline_text}} (giờ Nhật){% endif %}</div>
+ {% if error and not kibo_closed %}<div class="notice error">⚠ {{error}}</div>{% endif %}
  <form method="post" action="/kibo" class="week-form" id="kibo-form">
+  <fieldset {% if kibo_closed %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
   <input type="hidden" name="staff_id" value="{{selected_id}}"><input type="hidden" name="week" value="{{days[0]}}">
   <div class="week-title"><strong>{% for s in staff %}{% if s.id==selected_id %}{{s.name}}{% endif %}{% endfor %}</strong> • {{days[0].strftime('%d/%m')}} – {{days[-1].strftime('%d/%m/%Y')}}</div>
   {% for d in days %}{% set r=existing.get(d|string) %}<div class="day-card {% if r and not r.is_kibo %}locked{% endif %}">
@@ -31,8 +33,9 @@
    {% if r and not r.is_kibo %}<div class="fixed">🔒 Quản lý đã chốt: {{r.start}}–{{r.end}}</div>
    {% else %}<div class="times"><label>Bắt đầu<select name="start_{{loop.index0}}"><option value="">--:--</option>{% for h in range(7,23) %}{% for m in [0,30] %}{% set t='%02d:%02d'|format(h,m) %}<option value="{{t}}" {% if r and r.start==t %}selected{% endif %}>{{t}}</option>{% endfor %}{% endfor %}</select></label><span>–</span><label>Kết thúc<select name="end_{{loop.index0}}"><option value="">--:--</option>{% for h in range(7,23) %}{% for m in [0,30] %}{% set t='%02d:%02d'|format(h,m) %}<option value="{{t}}" {% if r and r.end==t %}selected{% endif %}>{{t}}</option>{% endfor %}{% endfor %}</select></label></div>{% endif %}
   </div>{% endfor %}
-  <button class="submit" type="submit" form="kibo-form">Kiểm tra và gửi 希望シフト</button>
+  {% if not kibo_closed %}<button class="submit" type="submit" form="kibo-form">Kiểm tra và gửi 希望シフト</button>{% endif %}
   <p class="help">Phút chọn theo nấc 00, 30. Ca gửi lên sẽ có màu vàng trên bảng chính để quản lý kiểm tra và chỉnh lại.</p>
+  </fieldset>
  </form>
  </div>
  {% endif %}
