@@ -217,7 +217,7 @@ def kibo():
  try:m=monday(raw_week) if raw_week else monday()+timedelta(days=7)
  except Exception:m=monday()+timedelta(days=7)
  days=[m+timedelta(days=i) for i in range(7)]
- kibo_deadline=datetime.combine(m-timedelta(days=4),datetime.min.time(),ZoneInfo('Asia/Tokyo')).replace(hour=22)
+ kibo_deadline=datetime.combine(m-timedelta(days=3),datetime.min.time(),ZoneInfo('Asia/Tokyo')).replace(hour=22)
  kibo_closed=datetime.now(ZoneInfo('Asia/Tokyo'))>=kibo_deadline
  deadline_text=kibo_deadline.strftime('%d/%m/%Y lúc %H:%M')
  try:selected_id=int(request.values.get('staff_id') or (staff[0]['id'] if staff else 0))
