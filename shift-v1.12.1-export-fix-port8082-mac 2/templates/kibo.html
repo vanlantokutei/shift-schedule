@@ -121,5 +121,22 @@ async function shareKibo(){
  .welcome-bottom small{font-size:11px}
 }
 
+/* Final welcome alignment: consistent vertical rhythm without shrinking content */
+@media(max-width:560px){
+ .kibo-page header .kibo-brand{gap:11px}
+ .kibo-page header .kibo-brand-copy{justify-content:center;min-height:38px}
+ .kibo-page header .kibo-brand-copy b{font-size:17px;line-height:1.25}
+ .kibo-welcome{margin:24px auto 24px;padding:20px 16px 22px}
+ .welcome-hero{padding:14px 0 22px}
+ .welcome-hero .betoya-logo{width:112px;height:112px;margin:0 auto 11px}
+ .welcome-store-name{font-size:20px;line-height:1.35;margin:0 auto 11px}
+ .welcome-hero h1{font-size:27px;line-height:1.3;margin:0 0 6px}
+ .welcome-hero p{font-size:14px;line-height:1.5}
+ .welcome-form{padding:17px 14px;gap:12px}
+ .welcome-form select{min-height:50px}
+ .welcome-form button{min-height:49px}
+ .welcome-bottom{padding-top:16px;gap:0}
+ .welcome-bottom .share-btn{width:100%;min-height:49px;margin:0}
+}
 </style>
 </body></html>
