@@ -11,7 +11,7 @@
    <button type="submit">Tiếp tục →</button>
   </form>
   
- <div class="notice {% if kibo_closed %}error{% endif %}" role="status">{% if kibo_before_open %}🔒 Chưa mở đăng ký. Hệ thống tự mở vào {{open_text}} (giờ Nhật).{% elif kibo_closed %}🔒 Đã hết hạn đăng ký lịch. Vui lòng liên hệ quản lý nếu cần thay đổi. Đợt tiếp theo tự mở lúc 00:00 thứ Hai.{% else %}🕙 Đang mở đăng ký · Hạn chót: {{deadline_text}} (giờ Nhật){% endif %}</div>
+ <div class="notice {% if kibo_closed %}error{% endif %} kibo-timer" id="kibo-timer" role="timer" aria-live="off" data-open="{{kibo_open_iso}}" data-close="{{kibo_deadline_iso}}">{% if kibo_before_open %}🔒 Chưa mở đăng ký. Tự mở: {{open_text}} (giờ Nhật).{% elif kibo_closed %}🔒 Đã hết hạn đăng ký. Đợt mới tự mở thứ Hai.{% else %}🕙 Còn thời gian đăng ký đến {{deadline_text}} (giờ Nhật){% endif %}</div>
   <div class="welcome-bottom"><button type="button" class="share-btn" onclick="shareKibo()">🔗 Chia sẻ trang đăng ký</button></div>
  </section>
  {% else %}
@@ -43,6 +43,24 @@
 {% if message %}<div id="kibo-success" class="kibo-confirm success-overlay" role="dialog" aria-modal="true" aria-labelledby="success-title"><div class="confirm-card success-card"><div class="success-bow" aria-hidden="true"><span class="bow-person">🙇</span><span class="bow-sparkle">✨</span></div><div class="success-icon" aria-hidden="true">✓</div><h2 id="success-title">Đăng ký thành công!</h2><p class="success-message">{{message}}</p><button type="button" class="success-close" onclick="document.getElementById('kibo-success').remove()">Đóng</button></div></div>{% endif %}
 <div id="kibo-confirm" class="kibo-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><div class="confirm-card"><h2 id="confirm-title">Xác nhận lịch đăng ký</h2><p>Bạn vui lòng kiểm tra lại lịch làm mong muốn bên dưới nhé! Nếu cần thay đổi, hãy chọn「Sửa lại」. Nếu mọi thông tin đã chính xác, hãy chọn「Xác nhận gửi」.</p><div id="confirm-summary"></div><div class="confirm-actions"><button type="button" id="confirm-edit">✏️ Sửa lại</button><button type="button" id="confirm-send">✓ Xác nhận gửi</button></div></div></div>
 <script>
+(function(){
+ const el=document.getElementById('kibo-timer');
+ if(!el)return;
+ const opens=new Date(el.dataset.open).getTime(),closes=new Date(el.dataset.close).getTime();
+ const fmt=ms=>{const n=Math.max(0,Math.floor(ms/1000));return [Math.floor(n/86400),Math.floor(n%86400/3600),Math.floor(n%3600/60),n%60].map((v,i)=>i?String(v).padStart(2,'0'):String(v)).join(' : ')};
+ const update=()=>{
+  const now=Date.now();
+  if(now<opens){el.textContent='🔒 Chưa mở đăng ký · Tự mở sau '+fmt(opens-now)+' (ngày : giờ : phút : giây)';return}
+  if(now<closes){el.textContent='🕙 Còn '+fmt(closes-now)+' (ngày : giờ : phút : giây) để gửi lịch';return}
+  el.classList.add('error');
+  el.textContent='🔒 Đã hết hạn đăng ký lịch. Đợt tiếp theo tự mở lúc 00:00 thứ Hai.';
+  const form=document.getElementById('kibo-form');if(form){form.querySelectorAll('input,select,button').forEach(x=>x.disabled=true)}
+ };
+ update();setInterval(update,1000);
+ // Refresh at a cycle boundary so the server supplies the new workweek and deadline.
+ const boundary=Date.now()<opens?opens:closes;
+ if(boundary>Date.now())setTimeout(()=>location.reload(),Math.min(boundary-Date.now()+1200,2147483647));
+})();
 const kiboForm=document.getElementById('kibo-form');
 const confirmBox=document.getElementById('kibo-confirm');
 let confirmed=false;
