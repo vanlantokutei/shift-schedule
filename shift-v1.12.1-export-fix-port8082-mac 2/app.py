@@ -102,6 +102,14 @@ def index():
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
  return render_template('index.html',staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+@app.get('/kibo/status')
+def kibo_live_status():
+ week=monday()+timedelta(days=7)
+ c=db()
+ rows=c.execute("""select s.name, k.submitted_at from kibo_submissions k join staff s on s.id=k.staff_id where k.week_start=%s and s.active=1 order by k.submitted_at desc""",(str(week),)).fetchall()
+ c.close()
+ return jsonify(week=str(week),count=len(rows),latest=str(rows[0]['submitted_at']) if rows else '',names=[r['name'] for r in rows])
+
 @app.get('/month')
 def month_view():
  try:
