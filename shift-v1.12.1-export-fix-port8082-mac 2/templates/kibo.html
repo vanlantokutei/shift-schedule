@@ -104,5 +104,22 @@ async function shareKibo(){
 
 /* Betoya mockup refinements */
 .kibo-page header{display:flex;justify-content:space-between;align-items:center;background:#1d2a2b;padding:12px 17px;min-height:68px;box-shadow:0 2px 12px #10201c12}.kibo-page header .kibo-brand{display:flex;gap:10px;align-items:center}.kibo-page header .kibo-brand .betoya-logo{width:42px;height:42px;max-width:none;flex:none;margin:0;background:#fff;border-radius:50%;padding:2px}.kibo-brand-copy{display:flex;flex-direction:column;align-items:flex-start;gap:3px}.kibo-page header .kibo-brand-copy b{font-size:17px;line-height:1.1}.kibo-page header .kibo-brand-copy span{font-size:11px;opacity:.8}.kibo-page header .kibo-header-right{font-size:12px;opacity:.9}.kibo-welcome{border-color:#edf0ed;background:linear-gradient(160deg,#fff 0%,#fff 76%,#f0f9f2 100%);box-shadow:0 9px 30px #12231d0a}.welcome-top{color:#52645a}.welcome-tag{background:#e7f7ed;color:#176a45}.welcome-hero h1,.welcome-store-name{color:#202a29}.welcome-form{border-color:#e7ece8;box-shadow:0 3px 18px #12231d08}.welcome-form button,.confirm-actions #confirm-send,.success-close{background:#10764e;color:#fff}.welcome-form button:hover,.confirm-actions #confirm-send:hover,.success-close:hover{background:#0b6240}.welcome-form select{border-color:#d9e1dc}.welcome-guide{background:#f5faff;border:1px solid #e5eef7;border-radius:13px;padding:16px;margin:16px 0;color:#405365}.welcome-guide p:last-child{margin-bottom:0}.kibo-step-two-head{background:#e9f7ed;color:#176a45;border-radius:13px}.kibo-step-two-head a{color:#176a45}.success-icon{background:#e7f7ed;color:#10764e}.success-card h2{color:#202a29}.confirm-card #confirm-summary{background:#f7faf8}
+/* Compact phone welcome: balanced height and consistent inner edges */
+@media(max-width:560px){
+ .kibo-welcome{padding:14px 14px 17px;margin:12px auto 18px}
+ .welcome-top{min-height:28px}
+ .welcome-hero{padding:14px 4px 17px}
+ .welcome-hero .betoya-logo{width:84px;height:84px;max-width:none;margin:0 auto 7px}
+ .welcome-store-name{font-size:17px;margin:0 auto 5px}
+ .welcome-hero h1{font-size:23px;margin:5px 0 4px;line-height:1.25}
+ .welcome-hero p{font-size:13px;line-height:1.4}
+ .welcome-form{padding:14px 12px;gap:10px}
+ .welcome-form label{font-size:13px}
+ .welcome-form select{min-height:46px;padding:9px 11px}
+ .welcome-form button{min-height:45px}
+ .welcome-bottom{padding-top:12px;gap:8px}
+ .welcome-bottom .share-btn{padding:12px 14px;min-height:45px;font-size:15px}
+ .welcome-bottom small{font-size:10px}
+}
 </style>
 </body></html>
