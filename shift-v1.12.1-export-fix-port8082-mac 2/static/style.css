@@ -23,3 +23,6 @@ body{font-size:13px;color:#293942}header{height:50px;padding:0 18px}header b{fon
 .kibo-person{padding:5px 9px;border-radius:999px;font-size:12px;background:#f3f5f6;color:#65747a}
 .kibo-person.done{background:#edf7f1;color:#35634c}
 .kibo-person.pending{background:#faf1ef;color:#87554d}
+
+/* Betoya unified black, white and logo-green palette */
+body{background:#f6f6f6;color:#202020}header{background:#171717;color:#fff}.toolbar>a,.kibo-link{color:#008e4f}.today,.editor #save,.editor #staffSave,.week-modal-actions #weekMove{background:#008e4f;color:#fff;border-color:#008e4f}.tablewrap,.editor,.week-modal-card,.kibo-status-box{border-color:#e1e1e1}.tablewrap thead th,.tablewrap thead th:first-child{background:#f2f2f2;color:#303030}.toolbar,.staffname,.week-modal-card>b{color:#202020}.change-week-btn{color:#202020;border-color:#d4d4d4}.change-week-btn:hover{background:#efefef}.shift.editing{box-shadow:inset 0 0 0 2px #008e4f;background:#edf7f1}.shift:hover{box-shadow:inset 0 0 0 2px #9bcbb0}.payroll-summary{background:#f2f6f3;border-color:#dbe8df}.payroll-summary strong{color:#008e4f}.exportbar{background:#f5f6f5}.exportbar a{color:#202020}.month-kpis>div{background:#f5f6f5}.kibo-status-box summary{color:#202020}
