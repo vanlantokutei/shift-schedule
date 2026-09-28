@@ -231,9 +231,10 @@ def kibo():
    entries.append((str(d),start,end))
   if not error and selected_id:
    try:
+    # Fetch the whole week once instead of making seven round trips to PostgreSQL.
+    locked_dates={r['work_date'] for r in c.execute('select work_date from shifts where staff_id=%s and work_date between %s and %s and is_kibo=0',(selected_id,str(days[0]),str(days[-1]))).fetchall()}
     for work_date,start,end in entries:
-     existing=c.execute('select is_kibo from shifts where staff_id=%s and work_date=%s',(selected_id,work_date)).fetchone()
-     if existing and not existing['is_kibo']:
+     if work_date in locked_dates:
       locked+=1;continue
      if start and end:
       c.execute('''insert into shifts(staff_id,work_date,start,"end",break_min,break_start,break_end,is_kibo) values(%s,%s,%s,%s,0,NULL,NULL,1) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=NULL,break_end=NULL,is_kibo=1''',(selected_id,work_date,start,end));submitted+=1
