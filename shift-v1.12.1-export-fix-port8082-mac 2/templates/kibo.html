@@ -2,13 +2,20 @@
 <html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>希望シフト</title><link rel="stylesheet" href="/static/kibo.css"></head>
 <body><main class="kibo-page">
  <header><div><b>希望シフト</b><span>Đăng ký lịch mong muốn</span></div></header>
- <section class="intro"><h1>Gửi lịch làm mong muốn</h1><p>Chọn tên nhân viên trước, sau đó nhập lịch làm mong muốn.</p></section>
- <button type="button" class="share-btn" onclick="shareKibo()">🔗 Chia sẻ trang đăng ký</button>
- <form method="get" class="picker" id="kibo-step-one">
-  <label>Tên nhân viên<select name="staff_id" required><option value="" {% if not request.values.get('staff_id') %}selected{% endif %} disabled>-- Chọn tên của bạn --</option>{% for s in staff %}<option value="{{s.id}}" {% if request.values.get('staff_id') == s.id|string %}selected{% endif %}>{{s.name}}</option>{% endfor %}</select></label>
-  <button type="submit">Tiếp tục →</button>
- </form>
- {% if request.values.get('staff_id') %}
+ {% if not request.values.get('staff_id') %}
+ <section class="kibo-welcome" aria-label="Chào mừng nhân viên">
+  <div class="welcome-top"><span>ベト屋築地店</span><span class="welcome-tag">希望シフト</span></div>
+  <div class="welcome-hero"><div class="welcome-flower" aria-hidden="true">🌸</div><h1>Chào mừng bạn!</h1><p>Đăng ký lịch làm mong muốn</p></div>
+  <form method="get" class="welcome-form" id="kibo-step-one">
+   <label for="welcome-staff">👤 Bước 1 · Chọn tên của bạn</label>
+   <select id="welcome-staff" name="staff_id" required><option value="" selected disabled>-- Chọn tên nhân viên --</option>{% for s in staff %}<option value="{{s.id}}">{{s.name}}</option>{% endfor %}</select>
+   <button type="submit">Tiếp tục →</button>
+  </form>
+  <div class="welcome-guide"><p>📅 Đăng ký lịch cho tuần làm việc sắp tới</p><p>✓ Kiểm tra lại trước khi gửi</p><p>💚 Cảm ơn bạn đã đăng ký đúng hạn!</p></div>
+  <div class="welcome-bottom"><button type="button" class="share-btn" onclick="shareKibo()">🔗 Chia sẻ trang đăng ký</button><small>ベト屋築地店 · Staff Schedule</small></div>
+ </section>
+ {% else %}
+ <section class="intro"><h1>Gửi lịch làm mong muốn</h1><p>Chọn giờ có thể làm, ngày không thể làm thì để trống.</p></section>
  <div class="kibo-step-two">
  <div class="kibo-step-two-head"><b>Bước 2 · Đăng ký lịch</b><a href="/kibo">← Đổi nhân viên</a></div>
  <form method="get" class="picker">
@@ -86,5 +93,6 @@ async function shareKibo(){
 .success-overlay{background:rgba(22,32,44,.48);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:10001}.success-card{text-align:center;padding:26px 22px}.success-icon{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#dcfce7;color:#15803d;font-size:34px;font-weight:800;margin:0 auto 14px}.success-card h2{color:#166534;margin:0 0 12px}.success-message{white-space:normal;line-height:1.7;text-align:left}.success-close{width:100%;padding:13px;border:0;border-radius:10px;background:#16814a;color:#fff;font-weight:700;font-size:16px;margin-top:12px;cursor:pointer}
 .success-bow{position:relative;width:100px;height:92px;margin:0 auto 4px;display:flex;align-items:center;justify-content:center}.bow-person{display:inline-block;font-size:66px;line-height:1;transform-origin:50% 80%;animation:kiboBow 1.5s ease-in-out .2s 1 both}.bow-sparkle{position:absolute;top:2px;right:0;font-size:23px;animation:kiboSparkle 1.5s ease-in-out .2s 1 both}@keyframes kiboBow{0%,100%{transform:rotate(0deg) translateY(0)}35%,65%{transform:rotate(16deg) translateY(9px)}}@keyframes kiboSparkle{0%,100%{opacity:0;transform:scale(.7)}45%,75%{opacity:1;transform:scale(1.1)}}@media(prefers-reduced-motion:reduce){.bow-person,.bow-sparkle{animation:none}}
 .kibo-step-two-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:14px 0;padding:12px 14px;background:#e8f6ee;border-radius:12px;color:#17613a}.kibo-step-two-head a{color:#17613a;font-weight:700;text-decoration:underline}.kibo-step-two{animation:kiboStepIn .25s ease-out}@keyframes kiboStepIn{from{opacity:.5;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+.kibo-welcome{max-width:500px;margin:18px auto 30px;padding:20px 18px 24px;border:1px solid #e6ebe7;border-radius:22px;background:linear-gradient(155deg,#fffafc 0%,#fff 45%,#f5faf7 100%);box-shadow:0 12px 35px #244d3612}.welcome-top{display:flex;justify-content:space-between;align-items:center;gap:10px;color:#60746a;font-size:12px;font-weight:700;letter-spacing:.04em}.welcome-tag{background:#e7f5ec;color:#17613a;border-radius:99px;padding:6px 11px}.welcome-hero{text-align:center;padding:27px 5px 23px}.welcome-flower{font-size:52px;line-height:1.3}.welcome-hero h1{margin:9px 0 6px;font-size:27px;color:#203e30}.welcome-hero p{margin:0;color:#65776b;font-size:14px}.welcome-form{display:flex;flex-direction:column;gap:13px;padding:18px;background:#fff;border:1px solid #e8eee9;border-radius:17px;box-shadow:0 4px 18px #173c2410}.welcome-form label{font-size:14px;font-weight:750;color:#254b35}.welcome-form select{box-sizing:border-box;width:100%;min-height:52px;padding:12px;border:1px solid #cbd9cf;border-radius:11px;background:#fff;color:#273a30;font-size:16px}.welcome-form button{min-height:49px;border:0;border-radius:11px;background:#16814a;color:#fff;font-size:16px;font-weight:750;cursor:pointer}.welcome-guide{padding:18px 6px 8px;color:#4d6658;font-size:13px}.welcome-guide p{margin:0 0 13px}.welcome-bottom{display:flex;flex-direction:column;align-items:center;gap:12px;border-top:1px solid #e7ede8;padding-top:16px}.welcome-bottom .share-btn{margin:0}.welcome-bottom small{font-size:11px;color:#8b9b90}@media(max-width:450px){.kibo-welcome{margin:12px 0 24px;padding:16px 13px}.welcome-hero{padding:23px 4px 19px}}
 </style>
 </body></html>
