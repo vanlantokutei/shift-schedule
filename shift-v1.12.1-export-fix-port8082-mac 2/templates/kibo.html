@@ -11,7 +11,7 @@
    <button type="submit">Tiếp tục →</button>
   </form>
   
- <div class="notice {% if kibo_closed %}error{% endif %} kibo-timer" id="kibo-timer" role="timer" aria-live="off" data-open="{{kibo_open_iso}}" data-close="{{kibo_deadline_iso}}">{% if kibo_before_open %}🔒 Chưa mở đăng ký. Tự mở: {{open_text}} (giờ Nhật).{% elif kibo_closed %}🔒 Đã hết hạn đăng ký. Đợt mới tự mở thứ Hai.{% else %}🕙 Còn thời gian đăng ký đến {{deadline_text}} (giờ Nhật){% endif %}</div>
+ <div class="notice {% if kibo_closed %}error{% endif %} kibo-deadline" data-open="{{kibo_open_iso}}" data-close="{{kibo_deadline_iso}}"><div id="kibo-deadline-label">{% if kibo_before_open %}🔒 Chưa mở đăng ký. Tự mở: {{open_text}} (giờ Nhật).{% elif kibo_closed %}🔒 Đã hết hạn đăng ký lịch. Đợt tiếp theo tự mở lúc 00:00 thứ Hai.{% else %}🕙 Đang mở đăng ký · Hạn chót: {{deadline_text}} (giờ Nhật){% endif %}</div><div class="kibo-countdown" id="kibo-timer" role="timer" aria-live="off">-- : -- : -- : --</div><small>Ngày : Giờ : Phút : Giây</small></div>
   <div class="welcome-bottom"><button type="button" class="share-btn" onclick="shareKibo()">🔗 Chia sẻ trang đăng ký</button></div>
  </section>
  {% else %}
@@ -46,18 +46,18 @@
 (function(){
  const el=document.getElementById('kibo-timer');
  if(!el)return;
- const opens=new Date(el.dataset.open).getTime(),closes=new Date(el.dataset.close).getTime();
+ const box=el.closest('.kibo-deadline'),label=document.getElementById('kibo-deadline-label');
+ const opens=new Date(box.dataset.open).getTime(),closes=new Date(box.dataset.close).getTime();
  const fmt=ms=>{const n=Math.max(0,Math.floor(ms/1000));return [Math.floor(n/86400),Math.floor(n%86400/3600),Math.floor(n%3600/60),n%60].map((v,i)=>i?String(v).padStart(2,'0'):String(v)).join(' : ')};
  const update=()=>{
   const now=Date.now();
-  if(now<opens){el.textContent='🔒 Chưa mở đăng ký · Tự mở sau '+fmt(opens-now)+' (ngày : giờ : phút : giây)';return}
-  if(now<closes){el.textContent='🕙 Còn '+fmt(closes-now)+' (ngày : giờ : phút : giây) để gửi lịch';return}
-  el.classList.add('error');
-  el.textContent='🔒 Đã hết hạn đăng ký lịch. Đợt tiếp theo tự mở lúc 00:00 thứ Hai.';
+  if(now<opens){el.textContent=fmt(opens-now);return}
+  if(now<closes){el.textContent=fmt(closes-now);return}
+  el.textContent='00 : 00 : 00 : 00';
+  box.classList.add('error');label.textContent='🔒 Đã hết hạn đăng ký lịch. Đợt tiếp theo tự mở lúc 00:00 thứ Hai.';
   const form=document.getElementById('kibo-form');if(form){form.querySelectorAll('input,select,button').forEach(x=>x.disabled=true)}
  };
  update();setInterval(update,1000);
- // Refresh at a cycle boundary so the server supplies the new workweek and deadline.
  const boundary=Date.now()<opens?opens:closes;
  if(boundary>Date.now())setTimeout(()=>location.reload(),Math.min(boundary-Date.now()+1200,2147483647));
 })();
@@ -159,5 +159,6 @@ async function shareKibo(){
  .welcome-bottom{padding-top:16px;gap:0}
  .welcome-bottom .share-btn{width:100%;min-height:49px;margin:0}
 }
+.kibo-deadline{text-align:center}.kibo-countdown{font-size:clamp(24px,6vw,35px);font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums;line-height:1.5;margin:8px 0 0;color:#10764e}.kibo-deadline.error .kibo-countdown{color:#a33434}.kibo-deadline small{display:block;font-size:11px;opacity:.75}
 </style>
 </body></html>
