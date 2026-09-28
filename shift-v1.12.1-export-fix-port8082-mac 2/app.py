@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, Response
 from datetime import date, timedelta, datetime
+from zoneinfo import ZoneInfo
 from email.message import EmailMessage
 import os
 import smtplib
@@ -29,8 +30,14 @@ def init():
  if rows and all((r['sort_order'] or 0)==0 for r in rows):
   for i,r in enumerate(rows): c.execute('update staff set sort_order=%s where id=%s',(i,r['id']))
  c.commit();c.close()
+def japan_today():
+ return datetime.now(ZoneInfo('Asia/Tokyo')).date()
 def monday(s=None):
- d=datetime.strptime(s,'%Y-%m-%d').date() if s else date.today();return d-timedelta(days=d.weekday())
+ d=datetime.strptime(s,'%Y-%m-%d').date() if s else japan_today()
+ return d-timedelta(days=d.weekday())
+def manager_week():
+ today=japan_today()
+ return monday()+timedelta(days=7 if today.weekday()>=3 else 0)
 def hdiff(a,b):
  if not a or not b:return 0
  x=datetime.strptime(a,'%H:%M');y=datetime.strptime(b,'%H:%M');return max(0,(y-x).seconds/3600)
@@ -82,7 +89,7 @@ def send_kibo_emails(staff_name,staff_email,days,entries,submitted,locked):
  return False
 @app.route('/')
 def index():
- m=monday(request.args.get('week'));days=[m+timedelta(days=i) for i in range(7)];c=db();staff=c.execute('select * from staff where active=1 order by sort_order,id').fetchall();rows=c.execute('select * from shifts where work_date between %s and %s',(str(days[0]),str(days[-1]))).fetchall();# Monthly totals for the month containing the week start.
+ m=monday(request.args['week']) if request.args.get('week') else manager_week();days=[m+timedelta(days=i) for i in range(7)];c=db();staff=c.execute('select * from staff where active=1 order by sort_order,id').fetchall();rows=c.execute('select * from shifts where work_date between %s and %s',(str(days[0]),str(days[-1]))).fetchall();# Monthly totals for the month containing the week start.
  month_start=m.replace(day=1)
  if m.month==12: month_end=date(m.year+1,1,1)-timedelta(days=1)
  else: month_end=date(m.year,m.month+1,1)-timedelta(days=1)
