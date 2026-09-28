@@ -8,6 +8,7 @@ import json
 import urllib.request
 import urllib.error
 import psycopg
+from time import perf_counter
 from psycopg.rows import dict_row
 app=Flask(__name__); DB_URL=os.environ.get('DATABASE_URL')
 DEFAULT_STAFF=['LÂN','SƯƠNG','Thoa','MINH ANH','HƯNG','THẢO','THƯ','Xuân','Nhi','Hiền','Ngân','HIỀN Mới','Trang']
@@ -208,7 +209,9 @@ def shift():
 
 @app.route('/kibo',methods=['GET','POST'])
 def kibo():
- c=db();staff=c.execute('select id,name,email from staff where active=1 order by sort_order,id').fetchall()
+ kibo_t0=perf_counter()
+ c=db();kibo_db_connect_ms=(perf_counter()-kibo_t0)*1000
+ staff=c.execute('select id,name,email from staff where active=1 order by sort_order,id').fetchall()
  message=None; error=None; submitted=0; locked=0
  raw_week=request.values.get('week')
  try:m=monday(raw_week) if raw_week else monday()+timedelta(days=7)
@@ -219,6 +222,7 @@ def kibo():
  valid_ids={s['id'] for s in staff}
  if selected_id not in valid_ids:selected_id=staff[0]['id'] if staff else 0
  if request.method=='POST':
+  kibo_save_t0=perf_counter()
   entries=[]
   for i,d in enumerate(days):
    start=(request.form.get(f'start_{i}') or '').strip();end=(request.form.get(f'end_{i}') or '').strip()
@@ -240,15 +244,17 @@ def kibo():
       c.execute('''insert into shifts(staff_id,work_date,start,"end",break_min,break_start,break_end,is_kibo) values(%s,%s,%s,%s,0,NULL,NULL,1) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=NULL,break_end=NULL,is_kibo=1''',(selected_id,work_date,start,end));submitted+=1
      else:c.execute('delete from shifts where staff_id=%s and work_date=%s and is_kibo=1',(selected_id,work_date))
     c.execute('''insert into kibo_submissions(staff_id,week_start,submitted_at) values(%s,%s,CURRENT_TIMESTAMP) on conflict(staff_id,week_start) do update set submitted_at=CURRENT_TIMESTAMP''',(selected_id,str(days[0])))
-    c.commit();message=f'Cảm ơn {next((s["name"] for s in staff if s["id"]==selected_id), "bạn")} đã đăng ký lịch làm! 🌸 Chúng tôi đã ghi nhận lịch mong muốn của bạn. Lịch làm chính thức sẽ được thông báo sau khi quản lý sắp xếp và chốt lịch nhé! Đã ghi nhận {submitted} ca 希望 cho tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}.'
+    c.commit();app.logger.info('KIBO_SAVE_METRICS db_connect_ms=%.0f save_ms=%.0f',kibo_db_connect_ms,(perf_counter()-kibo_save_t0)*1000);message=f'Cảm ơn {next((s["name"] for s in staff if s["id"]==selected_id), "bạn")} đã đăng ký lịch làm! 🌸 Chúng tôi đã ghi nhận lịch mong muốn của bạn. Lịch làm chính thức sẽ được thông báo sau khi quản lý sắp xếp và chốt lịch nhé! Đã ghi nhận {submitted} ca 希望 cho tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}.'
     if locked:message+=f' Có {locked} ngày quản lý đã chốt nên không bị ghi đè.'
     selected_staff=next((s for s in staff if s['id']==selected_id),None)
     staff_name=selected_staff['name'] if selected_staff else 'Nhân viên'
 
    except Exception:
+    app.logger.exception('KIBO_SAVE_FAILED db_connect_ms=%.0f elapsed_ms=%.0f',kibo_db_connect_ms,(perf_counter()-kibo_save_t0)*1000)
     c.rollback();error='Không lưu được 希望シフト. Vui lòng thử lại.'
  rows=c.execute('select work_date,start,"end",is_kibo from shifts where staff_id=%s and work_date between %s and %s',(selected_id,str(days[0]),str(days[-1]))).fetchall() if selected_id else []
  c.close();existing={r['work_date']:r for r in rows}
+ if request.method=='POST':app.logger.info('KIBO_REQUEST_METRICS total_ms=%.0f db_connect_ms=%.0f',(perf_counter()-kibo_t0)*1000,kibo_db_connect_ms)
  return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error)
 @app.post('/staff')
 def staff_action():
