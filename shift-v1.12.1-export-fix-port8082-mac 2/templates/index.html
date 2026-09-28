@@ -17,15 +17,44 @@ document.getElementById('draftPreviewBtn').onclick=async()=>{
   const response=await fetch('/draft-preview?week={{days[0]}}',{cache:'no-store'}),data=await response.json();
   if(!response.ok)throw Error(data.error||'Không tải được');
   out.replaceChildren();
-  const add=(tag,content)=>{const el=document.createElement(tag);el.textContent=content;out.append(el);return el};
+  const add=(tag,content,parent=out)=>{const el=document.createElement(tag);el.textContent=content;parent.append(el);return el};
   add('h3','📝 Lịch nháp tuần '+data.week+' — CHƯA LƯU');
-  add('p',data.note);
+  add('p','Chỉnh trực tiếp trong các ô bên dưới. Chưa lưu lên máy chủ và chưa thay đổi lịch chính; tải lại trang sẽ mất các chỉnh sửa nháp.');
   add('h4','Đề xuất ('+data.draft.length+' ca)');
   if(!data.draft.length)add('p','Chưa có ca 希望 để đề xuất.');
-  data.draft.forEach(x=>add('p',x.date+' · '+x.name+' · '+x.start+'–'+x.end+(x.break_start?' · Nghỉ '+x.break_start+'–'+x.break_end:(x.break_warning?' · '+x.break_warning:' · Không cần nghỉ'))));
+  const timePattern=/^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+  const draftItems=data.draft.map(x=>({...x}));
+  const error=add('p','');error.style.color='#b91c1c';
+  const summary=add('p','');
+  const update=()=>{
+   let total=0,invalid=0;
+   draftItems.forEach(x=>{
+    const toMin=t=>Number(t.slice(0,2))*60+Number(t.slice(3));
+    if(!timePattern.test(x.start)||!timePattern.test(x.end)||toMin(x.start)<420||toMin(x.end)>1320||toMin(x.end)<=toMin(x.start)){invalid++;return}
+    let minutes=toMin(x.end)-toMin(x.start);
+    if(x.break_start||x.break_end){
+     if(!timePattern.test(x.break_start||'')||!timePattern.test(x.break_end||'')||toMin(x.break_start)<toMin(x.start)||toMin(x.break_end)>toMin(x.end)||toMin(x.break_end)<=toMin(x.break_start)){invalid++;return}
+     minutes-=toMin(x.break_end)-toMin(x.break_start);
+    }
+    total+=minutes;
+   });
+   summary.textContent='Tổng giờ nháp sau nghỉ: '+(total/60).toFixed(2)+'h'+(invalid?' · '+invalid+' ca cần kiểm tra':'');
+   error.textContent=invalid?'⚠️ Kiểm tra lại giờ làm/nghỉ. Ca phải nằm trong 07:00–22:00 và giờ nghỉ nằm trong ca.':'';
+  };
+  draftItems.forEach(x=>{
+   const card=add('div','');card.style.cssText='border:1px solid #ddd;border-radius:8px;padding:9px;margin:8px 0';
+   add('b',x.date+' · '+x.name,card);
+   const line=add('div','',card);line.style.cssText='display:flex;gap:7px;flex-wrap:wrap;margin-top:7px';
+   [['Giờ vào','start'],['Giờ ra','end'],['Nghỉ từ','break_start'],['Nghỉ đến','break_end']].forEach(([label,key])=>{
+    const wrap=add('label',label+' ',line);wrap.style.cssText='display:flex;flex-direction:column;gap:3px;font-size:12px';
+    const input=document.createElement('input');input.type='time';input.step=900;input.value=x[key]||'';input.style.cssText='padding:7px;min-width:110px;max-width:150px';
+    input.addEventListener('input',()=>{x[key]=input.value;update()});wrap.append(input);
+   });
+  });
+  update();
   add('h4','Danh sách chờ do trùng giờ ('+data.waiting.length+' ca)');
   data.waiting.forEach(x=>add('p',x.date+' · '+x.name+' · '+x.start+'–'+x.end));
-  add('p','Đây chỉ là bản xem trước. Bạn vẫn xếp và lưu ca trên bảng chính như bình thường.');
+  add('p','Lưu ý: đây chỉ là bản chỉnh thử trên màn hình. Chưa có nút lưu bản nháp hay chốt lịch; không bấm lưu ca trên bảng chính nếu chưa muốn thay đổi lịch.');
  }catch(e){out.textContent='⚠️ '+e.message}
  finally{btn.disabled=false}
 };
