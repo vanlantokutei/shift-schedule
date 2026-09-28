@@ -22,7 +22,7 @@ document.getElementById('draftPreviewBtn').onclick=async()=>{
   add('p',data.note);
   add('h4','Đề xuất ('+data.draft.length+' ca)');
   if(!data.draft.length)add('p','Chưa có ca 希望 để đề xuất.');
-  data.draft.forEach(x=>add('p',x.date+' · '+x.name+' · '+x.start+'–'+x.end));
+  data.draft.forEach(x=>add('p',x.date+' · '+x.name+' · '+x.start+'–'+x.end+(x.break_start?' · Nghỉ '+x.break_start+'–'+x.break_end:(x.break_warning?' · '+x.break_warning:' · Không cần nghỉ'))));
   add('h4','Danh sách chờ do trùng giờ ('+data.waiting.length+' ca)');
   data.waiting.forEach(x=>add('p',x.date+' · '+x.name+' · '+x.start+'–'+x.end));
   add('p','Đây chỉ là bản xem trước. Bạn vẫn xếp và lưu ca trên bảng chính như bình thường.');
