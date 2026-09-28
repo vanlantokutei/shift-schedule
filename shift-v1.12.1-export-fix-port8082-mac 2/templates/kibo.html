@@ -11,7 +11,7 @@
    <button type="submit">Tiếp tục →</button>
   </form>
   
- <div class="notice {% if kibo_closed %}error{% endif %} kibo-deadline" data-open="{{kibo_open_iso}}" data-close="{{kibo_deadline_iso}}"><div id="kibo-deadline-label">{% if kibo_before_open %}🔒 Chưa mở đăng ký. Tự mở: {{open_text}} (giờ Nhật).{% elif kibo_closed %}🔒 Đã hết hạn đăng ký lịch. Đợt tiếp theo tự mở lúc 00:00 thứ Hai.{% else %}🕙 Đang mở đăng ký · Hạn chót: {{deadline_text}} (giờ Nhật){% endif %}</div><div class="kibo-countdown" id="kibo-timer" role="timer" aria-live="off">-- : -- : -- : --</div><small>Ngày : Giờ : Phút : Giây</small></div>
+ <div class="notice {% if kibo_closed %}error{% endif %} kibo-deadline" data-open="{{kibo_open_iso}}" data-close="{{kibo_deadline_iso}}"><div id="kibo-deadline-label">{% if kibo_before_open %}🔒 Chưa mở đăng ký. Tự mở: {{open_text}} (giờ Nhật).{% elif kibo_closed %}🔒 Đã hết hạn đăng ký lịch. Đợt tiếp theo tự mở lúc 00:00 thứ Hai.{% else %}🕙 Đang mở đăng ký · Hạn chót: {{deadline_text}} (giờ Nhật){% endif %}</div><div class="kibo-countdown" id="kibo-timer" role="timer" aria-live="off">-- ngày --:--:--</div></div>
   <div class="welcome-bottom"><button type="button" class="share-btn" onclick="shareKibo()">🔗 Chia sẻ trang đăng ký</button></div>
  </section>
  {% else %}
@@ -48,12 +48,12 @@
  if(!el)return;
  const box=el.closest('.kibo-deadline'),label=document.getElementById('kibo-deadline-label');
  const opens=new Date(box.dataset.open).getTime(),closes=new Date(box.dataset.close).getTime();
- const fmt=ms=>{const n=Math.max(0,Math.floor(ms/1000));return [Math.floor(n/86400),Math.floor(n%86400/3600),Math.floor(n%3600/60),n%60].map((v,i)=>i?String(v).padStart(2,'0'):String(v)).join(' : ')};
+ const fmt=ms=>{const n=Math.max(0,Math.floor(ms/1000));return Math.floor(n/86400)+' ngày '+[Math.floor(n%86400/3600),Math.floor(n%3600/60),n%60].map(v=>String(v).padStart(2,'0')).join(':')};
  const update=()=>{
   const now=Date.now();
   if(now<opens){el.textContent=fmt(opens-now);return}
   if(now<closes){el.textContent=fmt(closes-now);return}
-  el.textContent='00 : 00 : 00 : 00';
+  el.textContent='0 ngày 00:00:00';
   box.classList.add('error');label.textContent='🔒 Đã hết hạn đăng ký lịch. Đợt tiếp theo tự mở lúc 00:00 thứ Hai.';
   const form=document.getElementById('kibo-form');if(form){form.querySelectorAll('input,select,button').forEach(x=>x.disabled=true)}
  };
