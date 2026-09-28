@@ -2,3 +2,18 @@
 
 /* Unified green palette for both Kibo steps */
 .picker,.week-form{border-color:#e2ece5;box-shadow:0 7px 22px #244d3610}.picker select,.picker input,.times select{border-color:#cbd9cf;color:#273a30}.picker button,.submit{background:#16814a}.picker button:hover,.submit:hover{background:#126a3d}.week-title{color:#203e30}.day-card{border-top-color:#e7ede8}.share-btn{background:#e7f5ec;color:#17613a}.share-btn:hover{background:#d8efdf}
+
+/* Match the main scheduling page: slate blue, cool gray, white */
+body{background:#f5f6f7;color:#293942}
+header{background:#425466}
+.intro p,.help,.day-name span{color:#66737b}
+.picker,.week-form{border-color:#dde2e6;box-shadow:0 7px 22px #3341550c}
+.picker select,.picker input,.times select{border-color:#d7dde2;color:#334155}
+.picker button,.submit{background:#526d82}
+.picker button:hover,.submit:hover{background:#425466}
+.week-title{color:#293942}
+.day-card{border-top-color:#e8ebee}
+.locked{background:#edf2f4}
+.fixed{color:#52606d}
+.share-btn{background:#eef3f6;color:#425466}
+.share-btn:hover{background:#e2eaf0}
