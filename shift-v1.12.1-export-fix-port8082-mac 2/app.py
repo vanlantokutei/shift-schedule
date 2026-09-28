@@ -217,14 +217,19 @@ def kibo():
  try:m=monday(raw_week) if raw_week else monday()+timedelta(days=7)
  except Exception:m=monday()+timedelta(days=7)
  days=[m+timedelta(days=i) for i in range(7)]
+ kibo_deadline=datetime.combine(m-timedelta(days=4),datetime.min.time(),ZoneInfo('Asia/Tokyo')).replace(hour=22)
+ kibo_closed=datetime.now(ZoneInfo('Asia/Tokyo'))>=kibo_deadline
+ deadline_text=kibo_deadline.strftime('%d/%m/%Y lúc %H:%M')
  try:selected_id=int(request.values.get('staff_id') or (staff[0]['id'] if staff else 0))
  except Exception:selected_id=0
  valid_ids={s['id'] for s in staff}
  if selected_id not in valid_ids:selected_id=staff[0]['id'] if staff else 0
  if request.method=='POST':
+  if kibo_closed:error='Đã hết hạn đăng ký lịch. Vui lòng liên hệ quản lý nếu cần thay đổi.'
   kibo_save_t0=perf_counter()
   entries=[]
   for i,d in enumerate(days):
+   if error:break
    start=(request.form.get(f'start_{i}') or '').strip();end=(request.form.get(f'end_{i}') or '').strip()
    if bool(start)!=bool(end):error=f'{d.strftime("%d/%m")}: cần nhập đủ giờ bắt đầu và kết thúc';break
    if start and end:
@@ -255,7 +260,7 @@ def kibo():
  rows=c.execute('select work_date,start,"end",is_kibo from shifts where staff_id=%s and work_date between %s and %s',(selected_id,str(days[0]),str(days[-1]))).fetchall() if selected_id else []
  c.close();existing={r['work_date']:r for r in rows}
  if request.method=='POST':app.logger.info('KIBO_REQUEST_METRICS total_ms=%.0f db_connect_ms=%.0f',(perf_counter()-kibo_t0)*1000,kibo_db_connect_ms)
- return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error)
+ return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error,kibo_closed=kibo_closed,deadline_text=deadline_text)
 @app.post('/staff')
 def staff_action():
  x=request.get_json();c=db();a=x.get('action')
