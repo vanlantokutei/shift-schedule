@@ -109,6 +109,38 @@ def index():
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
  return render_template('index.html',staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+@app.get('/draft-preview')
+def draft_preview():
+ try: week=monday(request.args.get('week')) if request.args.get('week') else manager_week()
+ except ValueError: return jsonify(error='Tuần không hợp lệ'),400
+ end=week+timedelta(days=6)
+ c=db()
+ staff=c.execute('select id,name from staff where active=1').fetchall()
+ shifts=c.execute('select staff_id,work_date,start,"end",is_kibo from shifts where work_date between %s and %s',(str(week),str(end))).fetchall()
+ c.close()
+ names={s['id']:s['name'] for s in staff}
+ hours_by_staff={i:0 for i in names}
+ draft=[];waiting=[]
+ for day in (str(week+timedelta(days=i)) for i in range(7)):
+  day_shifts=[x for x in shifts if x['work_date']==day and x['staff_id'] in names]
+  existing=[x for x in day_shifts if not x['is_kibo']]
+  wanted=[x for x in day_shifts if x['is_kibo']]
+  occupancy={}
+  for x in existing:
+   for minute in range(420,1320,30):
+    if x['start']<=f'{minute//60:02d}:{minute%60:02d}'<x['end']:occupancy[minute]=occupancy.get(minute,0)+1
+   hours_by_staff[x['staff_id']]+=hdiff(x['start'],x['end'])
+  wanted.sort(key=lambda x:(hours_by_staff[x['staff_id']],x['staff_id']))
+  for x in wanted:
+   slots=[minute for minute in range(420,1320,30) if x['start']<=f'{minute//60:02d}:{minute%60:02d}'<x['end']]
+   item=dict(date=day,name=names[x['staff_id']],start=x['start'],end=x['end'])
+   if slots and all(occupancy.get(minute,0)<3 for minute in slots):
+    draft.append(item)
+    hours_by_staff[x['staff_id']]+=hdiff(x['start'],x['end'])
+    for minute in slots:occupancy[minute]=occupancy.get(minute,0)+1
+   else:waiting.append(item)
+ return jsonify(ok=True,week=str(week),draft=draft,waiting=waiting,capacity=3,note='Chỉ xem trước; chưa lưu hay chốt lịch. Mức 3 người mỗi thời điểm là mặc định minh họa.')
+
 @app.get('/kibo/status')
 def kibo_live_status():
  week=monday()+timedelta(days=7)
