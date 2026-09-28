@@ -109,6 +109,42 @@ def index():
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
  return render_template('index.html',staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+def suggest_draft_breaks(draft,existing):
+ """Preview-only breaks, staggered in 15-minute increments."""
+ def mins(t):return int(t[:2])*60+int(t[3:])
+ def fmt(t):return f'{t//60:02d}:{t%60:02d}'
+ for day in sorted({x['date'] for x in draft}):
+  planned=[x for x in draft if x['date']==day]
+  fixed=[x for x in existing if x['work_date']==day]
+  for item in sorted(planned,key=lambda x:(mins(x['end'])-mins(x['start']),x['start']),reverse=True):
+   start,end=mins(item['start']),mins(item['end'])
+   duration=end-start
+   # Store policy: 6h -> 45m; 8h -> 60m.
+   rest=60 if duration>=480 else 45 if duration>=360 else 0
+   item['break_min']=rest
+   item['break_start']=None;item['break_end']=None
+   if not rest:continue
+   options=range(((start+15+14)//15)*15,end-rest,15)
+   best=None
+   for begin in options:
+    finish=begin+rest
+    if finish>=end:continue
+    # Prefer times with fewer simultaneous breaks and enough working staff.
+    overlap=0
+    for other in planned:
+     if other is item or not other.get('break_start'):continue
+     overlap+=max(0,min(finish,mins(other['break_end']))-max(begin,mins(other['break_start'])))
+    for other in fixed:
+     if not other.get('break_start') or not other.get('break_end'):continue
+     overlap+=max(0,min(finish,mins(other['break_end']))-max(begin,mins(other['break_start'])))
+    middle=abs((begin+finish)-(start+end))
+    score=(overlap,middle,begin)
+    if best is None or score<best[0]:best=(score,begin,finish)
+   if best:
+    item['break_start']=fmt(best[1]);item['break_end']=fmt(best[2])
+   else:item['break_warning']='Không tìm được giờ nghỉ trong ca; cần chỉnh thủ công.'
+ return draft
+
 @app.get('/draft-preview')
 def draft_preview():
  try: week=monday(request.args.get('week')) if request.args.get('week') else manager_week()
@@ -116,7 +152,7 @@ def draft_preview():
  end=week+timedelta(days=6)
  c=db()
  staff=c.execute('select id,name from staff where active=1').fetchall()
- shifts=c.execute('select staff_id,work_date,start,"end",is_kibo from shifts where work_date between %s and %s',(str(week),str(end))).fetchall()
+ shifts=c.execute('select staff_id,work_date,start,"end",break_start,break_end,is_kibo from shifts where work_date between %s and %s',(str(week),str(end))).fetchall()
  c.close()
  names={s['id']:s['name'] for s in staff}
  hours_by_staff={i:0 for i in names}
@@ -139,7 +175,8 @@ def draft_preview():
     hours_by_staff[x['staff_id']]+=hdiff(x['start'],x['end'])
     for minute in slots:occupancy[minute]=occupancy.get(minute,0)+1
    else:waiting.append(item)
- return jsonify(ok=True,week=str(week),draft=draft,waiting=waiting,capacity=3,note='Chỉ xem trước; chưa lưu hay chốt lịch. Mức 3 người mỗi thời điểm là mặc định minh họa.')
+ suggest_draft_breaks(draft,[x for x in shifts if not x['is_kibo']])
+ return jsonify(ok=True,week=str(week),draft=draft,waiting=waiting,capacity=3,note='Chỉ xem trước; chưa lưu hay chốt lịch. Nghỉ theo quy định quán: từ 6h nghỉ 45 phút, từ 8h nghỉ 60 phút. Mức 3 người mỗi thời điểm là mặc định minh họa.')
 
 @app.get('/kibo/status')
 def kibo_live_status():
