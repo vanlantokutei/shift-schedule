@@ -247,8 +247,7 @@ def kibo():
     email_ok=send_kibo_emails(staff_name,staff_email,days,entries,submitted,locked)
     if staff_email:
      message+=(' Email xác nhận đã được gửi.' if email_ok else ' Đã lưu lịch nhưng chưa gửi được email xác nhận.')
-    else:
-     message+=' Nhân viên này chưa có email nên chưa thể gửi xác nhận.'
+
    except Exception:
     c.rollback();error='Không lưu được 希望シフト. Vui lòng thử lại.'
  rows=c.execute('select work_date,start,"end",is_kibo from shifts where staff_id=%s and work_date between %s and %s',(selected_id,str(days[0]),str(days[-1]))).fetchall() if selected_id else []
