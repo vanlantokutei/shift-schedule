@@ -11,6 +11,7 @@
    <button type="submit">Tiếp tục →</button>
   </form>
   
+ <div class="notice {% if kibo_closed %}error{% endif %}" role="status">{% if kibo_before_open %}🔒 Chưa mở đăng ký. Hệ thống tự mở vào {{open_text}} (giờ Nhật).{% elif kibo_closed %}🔒 Đã hết hạn đăng ký lịch. Vui lòng liên hệ quản lý nếu cần thay đổi. Đợt tiếp theo tự mở lúc 00:00 thứ Hai.{% else %}🕙 Đang mở đăng ký · Hạn chót: {{deadline_text}} (giờ Nhật){% endif %}</div>
   <div class="welcome-bottom"><button type="button" class="share-btn" onclick="shareKibo()">🔗 Chia sẻ trang đăng ký</button></div>
  </section>
  {% else %}
@@ -22,7 +23,6 @@
   <label>Chọn một ngày trong tuần<input type="date" name="week" value="{{days[0]}}" required></label>
   <button type="submit">Hiển thị tuần</button>
  </form>
- <div class="notice {% if kibo_closed %}error{% endif %}" role="status">{% if kibo_before_open %}🔒 Chưa mở đăng ký. Hệ thống tự mở vào {{open_text}} (giờ Nhật).{% elif kibo_closed %}🔒 Đã hết hạn đăng ký lịch. Vui lòng liên hệ quản lý nếu cần thay đổi. Đợt tiếp theo tự mở lúc 00:00 thứ Hai.{% else %}🕙 Đang mở đăng ký · Hạn chót: {{deadline_text}} (giờ Nhật){% endif %}</div>
  {% if error and not kibo_closed %}<div class="notice error">⚠ {{error}}</div>{% endif %}
  <form method="post" action="/kibo" class="week-form" id="kibo-form">
   <fieldset {% if kibo_closed %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
