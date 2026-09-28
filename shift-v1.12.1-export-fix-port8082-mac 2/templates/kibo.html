@@ -69,7 +69,9 @@ document.getElementById('confirm-edit').onclick=()=>{confirmBox.classList.add('h
 document.getElementById('confirm-send').onclick=()=>{
  if(confirmed)return;
  confirmed=true;
- document.getElementById('confirm-send').disabled=true;
+ const sendButton=document.getElementById('confirm-send');
+ sendButton.disabled=true;
+ sendButton.textContent='⏳ Đang lưu lịch…';
  kiboForm.requestSubmit();
 };
 async function shareKibo(){
