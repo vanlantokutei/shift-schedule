@@ -11,7 +11,7 @@
    <select id="welcome-staff" name="staff_id" required><option value="" selected disabled>-- Chọn tên nhân viên --</option>{% for s in staff %}<option value="{{s.id}}">{{s.name}}</option>{% endfor %}</select>
    <button type="submit">Tiếp tục →</button>
   </form>
-  <div class="welcome-guide"><p>📅 Đăng ký lịch cho tuần làm việc sắp tới</p><p>✓ Kiểm tra lại trước khi gửi</p><p>💚 Cảm ơn bạn đã đăng ký đúng hạn!</p></div>
+  
   <div class="welcome-bottom"><button type="button" class="share-btn" onclick="shareKibo()">🔗 Chia sẻ trang đăng ký</button><small>ベト屋築地店 · Staff Schedule</small></div>
  </section>
  {% else %}
