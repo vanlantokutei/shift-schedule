@@ -2,10 +2,17 @@
 <html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>希望シフト</title><link rel="stylesheet" href="/static/kibo.css"></head>
 <body><main class="kibo-page">
  <header><div><b>希望シフト</b><span>Đăng ký lịch mong muốn</span></div></header>
- <section class="intro"><h1>Gửi lịch làm mong muốn</h1><p>Chọn tên, chọn tuần rồi nhập giờ có thể làm. Ngày không thể làm thì để trống.</p></section>
+ <section class="intro"><h1>Gửi lịch làm mong muốn</h1><p>Chọn tên nhân viên trước, sau đó nhập lịch làm mong muốn.</p></section>
  <button type="button" class="share-btn" onclick="shareKibo()">🔗 Chia sẻ trang đăng ký</button>
+ <form method="get" class="picker" id="kibo-step-one">
+  <label>Tên nhân viên<select name="staff_id" required><option value="" {% if not request.values.get('staff_id') %}selected{% endif %} disabled>-- Chọn tên của bạn --</option>{% for s in staff %}<option value="{{s.id}}" {% if request.values.get('staff_id') == s.id|string %}selected{% endif %}>{{s.name}}</option>{% endfor %}</select></label>
+  <button type="submit">Tiếp tục →</button>
+ </form>
+ {% if request.values.get('staff_id') %}
+ <div class="kibo-step-two">
+ <div class="kibo-step-two-head"><b>Bước 2 · Đăng ký lịch</b><a href="/kibo">← Đổi nhân viên</a></div>
  <form method="get" class="picker">
-  <label>Tên nhân viên<select name="staff_id" required onchange="this.form.submit()">{% for s in staff %}<option value="{{s.id}}" {% if s.id==selected_id %}selected{% endif %}>{{s.name}}</option>{% endfor %}</select></label>
+  <input type="hidden" name="staff_id" value="{{selected_id}}">
   <label>Chọn một ngày trong tuần<input type="date" name="week" value="{{days[0]}}" required></label>
   <button type="submit">Hiển thị tuần</button>
  </form>
@@ -21,6 +28,8 @@
   <button class="submit" type="submit" form="kibo-form">Kiểm tra và gửi 希望シフト</button>
   <p class="help">Phút chọn theo nấc 00, 30. Ca gửi lên sẽ có màu vàng trên bảng chính để quản lý kiểm tra và chỉnh lại.</p>
  </form>
+ </div>
+ {% endif %}
 </main>
 {% if message %}<div id="kibo-success" class="kibo-confirm success-overlay" role="dialog" aria-modal="true" aria-labelledby="success-title"><div class="confirm-card success-card"><div class="success-bow" aria-hidden="true"><span class="bow-person">🙇</span><span class="bow-sparkle">✨</span></div><div class="success-icon" aria-hidden="true">✓</div><h2 id="success-title">Đăng ký thành công!</h2><p class="success-message">{{message}}</p><button type="button" class="success-close" onclick="document.getElementById('kibo-success').remove()">Đóng</button></div></div>{% endif %}
 <div id="kibo-confirm" class="kibo-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><div class="confirm-card"><h2 id="confirm-title">Xác nhận lịch đăng ký</h2><p>Bạn vui lòng kiểm tra lại lịch làm mong muốn bên dưới nhé! Nếu cần thay đổi, hãy chọn「Sửa lại」. Nếu mọi thông tin đã chính xác, hãy chọn「Xác nhận gửi」.</p><div id="confirm-summary"></div><div class="confirm-actions"><button type="button" id="confirm-edit">✏️ Sửa lại</button><button type="button" id="confirm-send">✓ Xác nhận gửi</button></div></div></div>
@@ -28,7 +37,7 @@
 const kiboForm=document.getElementById('kibo-form');
 const confirmBox=document.getElementById('kibo-confirm');
 let confirmed=false;
-kiboForm.addEventListener('submit',event=>{
+if(kiboForm)kiboForm.addEventListener('submit',event=>{
  if(confirmed)return;
  event.preventDefault();
  const lines=[];
@@ -76,5 +85,6 @@ async function shareKibo(){
 .kibo-confirm.hidden{display:none}.kibo-confirm{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:15px}.confirm-card{background:white;color:#222;border-radius:15px;padding:20px;width:min(100%,480px);max-height:85vh;overflow:auto;box-shadow:0 8px 35px #0003}.confirm-card h2{margin:0 0 10px}.confirm-card p{line-height:1.5}.confirm-card #confirm-summary{background:#f5f7fb;border-radius:9px;padding:12px;line-height:1.8}.confirm-card #confirm-summary div{border-bottom:1px solid #e5e7eb}.confirm-actions{display:flex;gap:10px;margin-top:16px}.confirm-actions button{flex:1;padding:13px 7px;border:0;border-radius:9px;font-weight:700;cursor:pointer}.confirm-actions #confirm-send{background:#16814a;color:white}
 .success-overlay{background:rgba(22,32,44,.48);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:10001}.success-card{text-align:center;padding:26px 22px}.success-icon{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#dcfce7;color:#15803d;font-size:34px;font-weight:800;margin:0 auto 14px}.success-card h2{color:#166534;margin:0 0 12px}.success-message{white-space:normal;line-height:1.7;text-align:left}.success-close{width:100%;padding:13px;border:0;border-radius:10px;background:#16814a;color:#fff;font-weight:700;font-size:16px;margin-top:12px;cursor:pointer}
 .success-bow{position:relative;width:100px;height:92px;margin:0 auto 4px;display:flex;align-items:center;justify-content:center}.bow-person{display:inline-block;font-size:66px;line-height:1;transform-origin:50% 80%;animation:kiboBow 1.5s ease-in-out .2s 1 both}.bow-sparkle{position:absolute;top:2px;right:0;font-size:23px;animation:kiboSparkle 1.5s ease-in-out .2s 1 both}@keyframes kiboBow{0%,100%{transform:rotate(0deg) translateY(0)}35%,65%{transform:rotate(16deg) translateY(9px)}}@keyframes kiboSparkle{0%,100%{opacity:0;transform:scale(.7)}45%,75%{opacity:1;transform:scale(1.1)}}@media(prefers-reduced-motion:reduce){.bow-person,.bow-sparkle{animation:none}}
+.kibo-step-two-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:14px 0;padding:12px 14px;background:#e8f6ee;border-radius:12px;color:#17613a}.kibo-step-two-head a{color:#17613a;font-weight:700;text-decoration:underline}.kibo-step-two{animation:kiboStepIn .25s ease-out}@keyframes kiboStepIn{from{opacity:.5;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
 </style>
 </body></html>
