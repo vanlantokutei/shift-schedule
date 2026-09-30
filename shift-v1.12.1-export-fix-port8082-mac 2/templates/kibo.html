@@ -40,7 +40,6 @@
    {% else %}<div class="times"><label>Bắt đầu<select name="start_{{loop.index0}}"><option value="">--:--</option>{% for h in range(7,23) %}{% for m in [0,30] %}{% set t='%02d:%02d'|format(h,m) %}<option value="{{t}}" {% if r and r.start==t %}selected{% endif %}>{{t}}</option>{% endfor %}{% endfor %}</select></label><span>–</span><label>Kết thúc<select name="end_{{loop.index0}}"><option value="">--:--</option>{% for h in range(7,23) %}{% for m in [0,30] %}{% set t='%02d:%02d'|format(h,m) %}<option value="{{t}}" {% if r and r.end==t %}selected{% endif %}>{{t}}</option>{% endfor %}{% endfor %}</select></label></div>{% endif %}
   </div>{% endfor %}
   {% if not kibo_closed %}<button class="submit" type="submit" form="kibo-form">Kiểm tra và gửi 希望シフト</button>{% endif %}
-  <p class="help">Phút chọn theo nấc 00, 30. Ca gửi lên sẽ có màu vàng trên bảng chính để quản lý kiểm tra và chỉnh lại.</p>
   </fieldset>
  </form>
  </div>
