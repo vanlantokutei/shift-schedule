@@ -28,6 +28,12 @@
   <fieldset {% if kibo_closed %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
   <input type="hidden" name="staff_id" value="{{selected_id}}"><input type="hidden" name="week" value="{{days[0]}}">
   <div class="week-title"><strong>{% for s in staff %}{% if s.id==selected_id %}{{s.name}}{% endif %}{% endfor %}</strong> • {{days[0].strftime('%d/%m')}} – {{days[-1].strftime('%d/%m/%Y')}}</div>
+  <div class="fixed-shift-tools">
+   <button type="button" onclick="fillKibo('previous')">↩️ Dùng lịch tuần trước</button>
+   <button type="button" class="fixed-save" onclick="saveFixedKibo()">📌 Đăng ký làm lịch cố định</button>
+   <button type="button" class="fixed-cancel" onclick="cancelFixedKibo()">Hủy lịch cố định</button>
+  </div>
+  <div id="fixed-shift-note" class="fixed-shift-note">Lịch được điền sẵn để bạn kiểm tra. Hệ thống không tự gửi 希望シフト.</div>
   {% for d in days %}{% set r=existing.get(d|string) %}<div class="day-card {% if r and not r.is_kibo %}locked{% endif %}">
    <div class="day-name"><b>{{['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật'][loop.index0]}}</b><span>{{d.strftime('%d/%m')}}</span></div>
    {% if r and not r.is_kibo %}<div class="fixed">🔒 Quản lý đã chốt: {{r.start}}–{{r.end}}</div>
@@ -95,6 +101,35 @@ document.getElementById('confirm-send').onclick=()=>{
  sendButton.textContent='⏳ Đang lưu lịch…';
  kiboForm.requestSubmit();
 };
+async function fillKibo(mode){
+ const form=document.getElementById('kibo-form'); if(!form)return;
+ const staff=form.elements.staff_id.value,week=form.elements.week.value;
+ try{
+  const r=await fetch('/kibo/prefill?staff_id='+encodeURIComponent(staff)+'&week='+encodeURIComponent(week)+'&mode='+encodeURIComponent(mode));
+  const data=await r.json(); if(!data.ok)throw new Error(data.error||'Lỗi');
+  let count=0;
+  for(let i=0;i<7;i++){
+   const a=form.elements['start_'+i],b=form.elements['end_'+i]; if(!a||!b||a.disabled||b.disabled)continue;
+   const e=data.entries[String(i)]||data.entries[i];
+   if(e){a.value=e.start;b.value=e.end;count++}else if(mode==='previous'){a.value='';b.value=''}
+  }
+  document.getElementById('fixed-shift-note').textContent=mode==='previous'?'Đã điền '+count+' ca từ tuần trước. Bạn có thể sửa/xóa trước khi gửi.':'Đã điền '+count+' ca lịch cố định.';
+ }catch(e){alert('Không lấy được lịch: '+e.message)}
+}
+async function saveFixedKibo(){
+ const form=document.getElementById('kibo-form'); if(!form)return;
+ const entries=[];
+ for(let i=0;i<7;i++){const a=form.elements['start_'+i],b=form.elements['end_'+i];if(a&&b&&a.value&&b.value)entries.push({weekday:i,start:a.value,end:b.value})}
+ if(!entries.length){alert('Hãy nhập ít nhất 1 ca trước khi đăng ký lịch cố định.');return}
+ if(!confirm('Lưu lịch hiện tại làm lịch cố định? Các tuần sau hệ thống sẽ tự điền, nhưng vẫn cần bấm gửi Kibo.'))return;
+ const r=await fetch('/kibo/fixed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_id:form.elements.staff_id.value,entries})});
+ const data=await r.json(); if(data.ok){document.getElementById('fixed-shift-note').textContent='📌 Đã lưu '+data.saved+' ca làm lịch cố định.'}else alert(data.error||'Không lưu được lịch cố định.');
+}
+async function cancelFixedKibo(){
+ const form=document.getElementById('kibo-form');if(!form||!confirm('Hủy lịch cố định của bạn?'))return;
+ const r=await fetch('/kibo/fixed?staff_id='+encodeURIComponent(form.elements.staff_id.value),{method:'DELETE'});
+ const data=await r.json();if(data.ok)document.getElementById('fixed-shift-note').textContent='Đã hủy lịch cố định. Những tuần sau sẽ không tự điền nữa.';else alert('Không hủy được lịch cố định.');
+}
 async function shareKibo(){
   const data={title:'希望シフト',text:'Đăng ký lịch làm mong muốn tại đây:',url:window.location.href};
   try{
@@ -111,6 +146,7 @@ async function shareKibo(){
 }
 </script>
 <style>
+.fixed-shift-tools{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:12px 0}.fixed-shift-tools button{border:1px solid #d9e1dc;background:#fff;color:#176a45;border-radius:11px;padding:11px 8px;font-weight:750;cursor:pointer}.fixed-shift-tools .fixed-save{background:#e9f7ed}.fixed-shift-tools .fixed-cancel{grid-column:1/-1;color:#8b3a3a;border-color:#ead4d4}.fixed-shift-note{font-size:12px;line-height:1.5;color:#52645a;background:#f7faf8;border-radius:10px;padding:9px 11px;margin:-3px 0 12px}@media(max-width:430px){.fixed-shift-tools{grid-template-columns:1fr}.fixed-shift-tools .fixed-cancel{grid-column:auto}}
 .share-btn{display:block;width:100%;max-width:520px;margin:0 auto 16px;padding:13px 16px;border:0;border-radius:12px;font-weight:700;font-size:16px;cursor:pointer}
 .kibo-confirm.hidden{display:none}.kibo-confirm{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:15px}.confirm-card{background:white;color:#222;border-radius:15px;padding:20px;width:min(100%,480px);max-height:85vh;overflow:auto;box-shadow:0 8px 35px #0003}.confirm-card h2{margin:0 0 10px}.confirm-card p{line-height:1.5}.confirm-card #confirm-summary{background:#f5f7fb;border-radius:9px;padding:12px;line-height:1.8}.confirm-card #confirm-summary div{border-bottom:1px solid #e5e7eb}.confirm-actions{display:flex;gap:10px;margin-top:16px}.confirm-actions button{flex:1;padding:13px 7px;border:0;border-radius:9px;font-weight:700;cursor:pointer}.confirm-actions #confirm-send{background:#526d82;color:white}
 .success-overlay{background:rgba(22,32,44,.48);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:10001}.success-card{text-align:center;padding:26px 22px}.success-icon{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#eef3f6;color:#526d82;font-size:34px;font-weight:800;margin:0 auto 14px}.success-card h2{color:#425466;margin:0 0 12px}.success-message{white-space:normal;line-height:1.7;text-align:left}.success-close{width:100%;padding:13px;border:0;border-radius:10px;background:#526d82;color:#fff;font-weight:700;font-size:16px;margin-top:12px;cursor:pointer}
