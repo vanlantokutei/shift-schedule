@@ -1,0 +1,21 @@
+diff --git a/shift-v1.12.1-export-fix-port8082-mac 2/app.py b/shift-v1.12.1-export-fix-port8082-mac 2/app.py
+--- a/shift-v1.12.1-export-fix-port8082-mac 2/app.py
++++ b/shift-v1.12.1-export-fix-port8082-mac 2/app.py
+@@
+- c.close();kibo_status={r['staff_id']:r['submitted_at_jst'] for r in kibo_rows}
++ c.close();kibo_status={r['staff_id']:r['submitted_at_jst'] for r in kibo_rows}
++ for r in legacy_kibo:
++  kibo_status.setdefault(r['staff_id'],None)
+@@
+ def kibo_live_status():
+  week=monday()+timedelta(days=7)
++ end=week+timedelta(days=6)
+  c=db()
+  rows=c.execute("""select s.name, k.submitted_at from kibo_submissions k join staff s on s.id=k.staff_id where k.week_start=%s and s.active=1 order by k.submitted_at desc""",(str(week),)).fetchall()
++ legacy=c.execute("""select distinct s.id,s.name from shifts sh join staff s on s.id=sh.staff_id where sh.work_date between %s and %s and sh.is_kibo=1 and s.active=1""",(str(week),str(end))).fetchall()
+  c.close()
+- return jsonify(week=str(week),count=len(rows),latest=str(rows[0]['submitted_at']) if rows else '',names=[r['name'] for r in rows])
++ names=[r['name'] for r in rows]
++ seen={r['name'] for r in rows}
++ names.extend(r['name'] for r in legacy if r['name'] not in seen)
++ return jsonify(week=str(week),count=len(names),latest=str(rows[0]['submitted_at']) if rows else '',names=names)
