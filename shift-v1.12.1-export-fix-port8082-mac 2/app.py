@@ -25,6 +25,8 @@ def init():
   c.execute(sql)
  c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break_start TEXT")
  c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break_end TEXT")
+ c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break2_start TEXT")
+ c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS break2_end TEXT")
  c.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS is_kibo INTEGER DEFAULT 0")
  if c.execute('select count(*) n from staff').fetchone()['n']==0:
   c.cursor().executemany('insert into staff(name) values(%s)', [(x,) for x in DEFAULT_STAFF])
@@ -46,6 +48,7 @@ def hdiff(a,b):
 def hours(r):
  if not r:return 0
  br=hdiff(r['break_start'],r['break_end']) if r['break_start'] and r['break_end'] else 0
+ br+=hdiff(r.get('break2_start'),r.get('break2_end'))
  return max(0,hdiff(r['start'],r['end'])-br)
 def send_email(to_email,subject,text_body):
  to_email=(to_email or '').strip()
@@ -203,9 +206,27 @@ def month_view():
 
 @app.post('/shift')
 def shift():
- x=request.get_json();c=db()
- if not x.get('start') or not x.get('end'):c.execute('delete from shifts where staff_id=%s and work_date=%s',(x['staff_id'],x['date']))
- else:c.execute('''insert into shifts(staff_id,work_date,start,"end",break_start,break_end,break_min,is_kibo) values(%s,%s,%s,%s,%s,%s,0,0) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=excluded.break_start,break_end=excluded.break_end,is_kibo=0''',(x['staff_id'],x['date'],x['start'],x['end'],x.get('break_start') or None,x.get('break_end') or None))
+ x=request.get_json() or {}
+ start,end=x.get('start'),x.get('end')
+ intervals=[]
+ try:
+  def minute(value):
+   parsed=datetime.strptime(value,'%H:%M')
+   if parsed.strftime('%H:%M')!=value:raise ValueError()
+   return parsed.hour*60+parsed.minute
+  if bool(start)!=bool(end):raise ValueError()
+  if start and minute(end)<=minute(start):raise ValueError()
+  for left,right in [('break_start','break_end'),('break2_start','break2_end')]:
+   a,b=x.get(left),x.get(right)
+   if bool(a)!=bool(b):raise ValueError()
+   if a:
+    if not start or not minute(start)<=minute(a)<minute(b)<=minute(end):raise ValueError()
+    intervals.append((minute(a),minute(b)))
+  if len(intervals)==2 and max(a for a,b in intervals)<min(b for a,b in intervals):raise ValueError()
+ except (ValueError,TypeError):return jsonify(ok=False,error='Kiểm tra giờ làm và giờ nghỉ: nghỉ phải nằm trong ca và không trùng nhau.'),400
+ c=db()
+ if not start:c.execute('delete from shifts where staff_id=%s and work_date=%s',(x['staff_id'],x['date']))
+ else:c.execute('''insert into shifts(staff_id,work_date,start,"end",break_start,break_end,break2_start,break2_end,break_min,is_kibo) values(%s,%s,%s,%s,%s,%s,%s,%s,0,0) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=excluded.break_start,break_end=excluded.break_end,break2_start=excluded.break2_start,break2_end=excluded.break2_end,is_kibo=0''',(x['staff_id'],x['date'],start,end,x.get('break_start') or None,x.get('break_end') or None,x.get('break2_start') or None,x.get('break2_end') or None))
  c.commit();c.close();return jsonify(ok=True)
 
 @app.get('/kibo/prefill')
@@ -294,7 +315,7 @@ def kibo():
      if work_date in locked_dates:
       locked+=1;continue
      if start and end:
-      c.execute('''insert into shifts(staff_id,work_date,start,"end",break_min,break_start,break_end,is_kibo) values(%s,%s,%s,%s,0,NULL,NULL,1) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=NULL,break_end=NULL,is_kibo=1''',(selected_id,work_date,start,end));submitted+=1
+      c.execute('''insert into shifts(staff_id,work_date,start,"end",break_min,break_start,break_end,is_kibo) values(%s,%s,%s,%s,0,NULL,NULL,1) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=NULL,break_end=NULL,break2_start=NULL,break2_end=NULL,is_kibo=1''',(selected_id,work_date,start,end));submitted+=1
      else:c.execute('delete from shifts where staff_id=%s and work_date=%s and is_kibo=1',(selected_id,work_date))
     c.execute('''insert into kibo_submissions(staff_id,week_start,submitted_at) values(%s,%s,CURRENT_TIMESTAMP) on conflict(staff_id,week_start) do update set submitted_at=CURRENT_TIMESTAMP''',(selected_id,str(days[0])))
     c.commit();app.logger.info('KIBO_SAVE_METRICS db_connect_ms=%.0f save_ms=%.0f',kibo_db_connect_ms,(perf_counter()-kibo_save_t0)*1000);message=f'Cảm ơn {next((s["name"] for s in staff if s["id"]==selected_id), "bạn")} đã đăng ký lịch làm! 🌸 Chúng tôi đã ghi nhận lịch mong muốn của bạn. Lịch làm chính thức sẽ được thông báo sau khi quản lý sắp xếp và chốt lịch nhé! Đã ghi nhận {submitted} ca 希望 cho tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}.'
@@ -368,12 +389,12 @@ def backup_csv():
  import csv, io
  c=db()
  staff=c.execute('select id,name,active,staff_type,pay_type,hourly_rate,monthly_salary,sort_order from staff order by sort_order,id').fetchall()
- shifts=c.execute('select id,staff_id,work_date,start,"end",break_start,break_end,break_min from shifts order by work_date,staff_id').fetchall()
+ shifts=c.execute('select id,staff_id,work_date,start,"end",break_start,break_end,break_min,break2_start,break2_end from shifts order by work_date,staff_id').fetchall()
  c.close()
  out=io.StringIO(); w=csv.writer(out)
- w.writerow(['type','id','staff_id/name','work_date/active','start/staff_type','end/pay_type','break_start/hourly_rate','break_end/monthly_salary','break_min/sort_order'])
+ w.writerow(['type','id','staff_id/name','work_date/active','start/staff_type','end/pay_type','break_start/hourly_rate','break_end/monthly_salary','break_min/sort_order','break2_start','break2_end'])
  for s in staff: w.writerow(['staff',s['id'],s['name'],s['active'],s['staff_type'],s['pay_type'],s['hourly_rate'],s['monthly_salary'],s['sort_order']])
- for r in shifts: w.writerow(['shift',r['id'],r['staff_id'],r['work_date'],r['start'],r['end'],r['break_start'] or '',r['break_end'] or '',r['break_min'] or 0])
+ for r in shifts: w.writerow(['shift',r['id'],r['staff_id'],r['work_date'],r['start'],r['end'],r['break_start'] or '',r['break_end'] or '',r['break_min'] or 0,r['break2_start'] or '',r['break2_end'] or ''])
  filename='shift-backup-'+datetime.now().strftime('%Y%m%d-%H%M')+'.csv'
  return Response(out.getvalue(),mimetype='text/csv; charset=utf-8',headers={'Content-Disposition':'attachment; filename='+filename})
 
@@ -398,7 +419,7 @@ def restore_backup():
    for r in shift_rows:
     nid=idmap.get(int(r[2]));
     if not nid: continue
-    c.execute('''insert into shifts(staff_id,work_date,start,"end",break_start,break_end,break_min) values(%s,%s,%s,%s,%s,%s,%s) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=excluded.break_start,break_end=excluded.break_end,break_min=excluded.break_min''',(nid,r[3],r[4],r[5],r[6] or None,r[7] or None,int(r[8] or 0)))
+    c.execute('''insert into shifts(staff_id,work_date,start,"end",break_start,break_end,break_min,break2_start,break2_end) values(%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=excluded.break_start,break_end=excluded.break_end,break_min=excluded.break_min,break2_start=excluded.break2_start,break2_end=excluded.break2_end''',(nid,r[3],r[4],r[5],r[6] or None,r[7] or None,int(r[8] or 0),r[9] or None if len(r)>9 else None,r[10] or None if len(r)>10 else None))
    c.commit()
   except Exception:
    c.rollback(); raise
