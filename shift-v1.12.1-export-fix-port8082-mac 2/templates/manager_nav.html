@@ -1,0 +1,9 @@
+<nav aria-label="Tài khoản quản lý" style="display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;padding:10px 18px;background:#edf2ee;font:14px system-ui,sans-serif">
+<span>{{g.manager.display_name}}</span>{% if g.manager.role=='owner' %}<a href="{{url_for('manager_accounts')}}">Tài khoản quản lý</a>{% endif %}
+<form method="post" action="{{url_for('manager_logout')}}" style="margin:0"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}"><button type="submit">Đăng xuất</button></form></nav>
+<script>
+(()=>{const originalFetch=window.fetch.bind(window),csrf={{manager_csrf()|tojson}};
+window.fetch=async(input,options={})=>{const url=new URL(typeof input==='string'?input:input.url,location.href),method=(options.method||(input instanceof Request?input.method:'GET')).toUpperCase();
+if(url.origin===location.origin&&!['GET','HEAD','OPTIONS'].includes(method)){const headers=new Headers(options.headers||(input instanceof Request?input.headers:undefined));headers.set('X-CSRF-Token',csrf);options={...options,headers};}
+const response=await originalFetch(input,options);if(url.origin===location.origin&&response.status===401){location.assign('/admin/login');throw new Error('Vui lòng đăng nhập lại.');}return response;};})();
+</script>

@@ -435,4 +435,7 @@ def staff_reorder():
  c.commit();c.close();return jsonify(ok=True)
 
 init()
+from manager_auth import install_manager_auth
+install_manager_auth(app, db)
 if __name__=='__main__':app.run(host='0.0.0.0',port=int(os.environ.get('PORT',8082)),debug=False)
+
