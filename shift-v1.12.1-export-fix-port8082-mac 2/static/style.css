@@ -41,3 +41,10 @@ body{background:#fafaf8;color:#202a29;font-size:13px}header{background:#1d2a2b;h
 header{justify-content:center}
 header .brand-head{margin:0 auto;justify-content:center}
 header .brand-copy{align-items:center;text-align:center}
+
+/* Official Japanese holidays: preserve work, break and Kibo status colors. */
+thead th.holiday{background:#fdecec;color:#b42332}
+thead th.holiday small{color:#b42332}
+thead .holiday-name{font-size:10px;line-height:1.4;white-space:normal;overflow-wrap:anywhere;padding:2px 3px}
+.shift.holiday-cell:not(.has-shift),.month-shift.holiday-cell:not(.has-shift){background:#fff5f5}
+.holiday-note{color:#8a5a21;font-size:12px}

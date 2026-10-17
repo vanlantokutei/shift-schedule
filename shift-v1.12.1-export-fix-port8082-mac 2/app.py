@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, Response
 from datetime import date, timedelta, datetime
 from zoneinfo import ZoneInfo
+from jp_holidays import holiday_context
 from email.message import EmailMessage
 import os
 import smtplib
@@ -113,7 +114,7 @@ def index():
  baito_monthly_pay=sum(round(monthly_totals[s['id']]*(s['hourly_rate'] or 0)) for s in staff if s['staff_type']=='baito')
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
- return render_template('index.html',staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+ return render_template('index.html',**holiday_context(days),staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
 def suggest_draft_breaks(draft,existing):
  """Preview-only breaks, staggered in 15-minute increments."""
  def mins(t):return int(t[:2])*60+int(t[3:])
@@ -202,7 +203,7 @@ def month_view():
  prev=(first-timedelta(days=1)).replace(day=1); nxt=next_first
  c=db(); staff=c.execute('select * from staff where active=1 order by sort_order,id').fetchall(); rows=c.execute('select * from shifts where work_date between %s and %s',(str(first),str(last))).fetchall(); c.close()
  sm={(r['staff_id'],r['work_date']):r for r in rows}; totals={s['id']:sum(hours(sm.get((s['id'],str(d)))) for d in days) for s in staff}
- return render_template('month.html',staff=staff,days=days,sm=sm,totals=totals,year=y,month=mo,prev_year=prev.year,prev_month=prev.month,next_year=nxt.year,next_month=nxt.month)
+ return render_template('month.html',**holiday_context(days),staff=staff,days=days,sm=sm,totals=totals,year=y,month=mo,prev_year=prev.year,prev_month=prev.month,next_year=nxt.year,next_month=nxt.month)
 
 @app.post('/shift')
 def shift():
