@@ -67,3 +67,6 @@ thead .holiday-name{font-size:10px;line-height:1.4;white-space:normal;overflow-w
  background:#fff;
  border-top:1px solid #e8ebee;
 }
+
+/* Hide the retired email shortcut in older schedule markup. */
+.staff .emailbtn{display:none!important}
