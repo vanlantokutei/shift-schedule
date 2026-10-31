@@ -41,7 +41,25 @@ document.addEventListener('mousedown',e=>{if(ed.classList.contains('hidden')||sa
 addStaff.onclick=async()=>{let n=prompt('Tên nhân viên mới:');if(n&&n.trim()){await fetch('/staff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'add',name:n})});location.reload()}};
 document.querySelectorAll('.staffname').forEach(x=>x.onclick=async()=>{let n=prompt('Đổi tên nhân viên:',x.textContent);if(n&&n.trim()&&n!==x.textContent){await fetch('/staff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'rename',id:+x.dataset.id,name:n})});location.reload()}});
 document.querySelectorAll('.del').forEach(x=>x.onclick=async e=>{e.stopPropagation();if(confirm('Xóa nhân viên này khỏi danh sách?')){await fetch('/staff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id:+x.dataset.id})});location.reload()}});
-document.querySelectorAll('.staffedit').forEach(x=>x.onclick=e=>{e.stopPropagation();staffBtn=x;staffType.value=x.dataset.type;payType.value=x.dataset.paytype;hourly.value=x.dataset.hourly||0;monthly.value=x.dataset.monthly||0;const r=x.getBoundingClientRect();sed.style.left=Math.min(innerWidth-300,r.right+5)+'px';sed.style.top=Math.min(innerHeight-250,r.top)+'px';sed.classList.remove('hidden')});
+function positionStaffEditor(anchor){
+ const viewport=window.visualViewport;
+ const left=viewport?viewport.offsetLeft:0,top=viewport?viewport.offsetTop:0;
+ const width=viewport?viewport.width:innerWidth,height=viewport?viewport.height:innerHeight;
+ sed.style.maxHeight=Math.max(0,height-16)+'px';
+ sed.style.width=Math.max(0,Math.min(340,width-16))+'px';
+ const box=sed.getBoundingClientRect();
+ sed.style.left=Math.max(left+8,Math.min(left+width-box.width-8,anchor.right+5))+'px';
+ sed.style.top=Math.max(top+8,Math.min(top+height-box.height-8,anchor.top))+'px';
+}
+function repositionStaffEditor(){
+ if(staffBtn&&!sed.classList.contains('hidden'))positionStaffEditor(staffBtn.getBoundingClientRect());
+}
+window.addEventListener('resize',repositionStaffEditor);
+if(window.visualViewport){
+ window.visualViewport.addEventListener('resize',repositionStaffEditor);
+ window.visualViewport.addEventListener('scroll',repositionStaffEditor);
+}
+document.querySelectorAll('.staffedit').forEach(x=>x.onclick=e=>{e.stopPropagation();staffBtn=x;staffType.value=x.dataset.type;payType.value=x.dataset.paytype;hourly.value=x.dataset.hourly||0;monthly.value=x.dataset.monthly||0;const r=x.getBoundingClientRect();sed.classList.remove('hidden');sed.scrollTop=0;positionStaffEditor(r)});
 staffCancel.onclick=()=>sed.classList.add('hidden');staffSave.onclick=async()=>{await fetch('/staff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update',id:+staffBtn.dataset.id,staff_type:staffType.value,pay_type:payType.value,hourly_rate:+hourly.value||0,monthly_salary:+monthly.value||0})});location.reload()};
 jumpForm.onsubmit=e=>{e.preventDefault();let d=new Date(+jumpYear.value,+jumpMonth.value-1,1),wd=(d.getDay()+6)%7;d.setDate(d.getDate()-wd);location='/?week='+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 async function exportPNG(){
