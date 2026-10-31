@@ -48,3 +48,22 @@ thead th.holiday small{color:#b42332}
 thead .holiday-name{font-size:10px;line-height:1.4;white-space:normal;overflow-wrap:anywhere;padding:2px 3px}
 .shift.holiday-cell:not(.has-shift),.month-shift.holiday-cell:not(.has-shift){background:#fff5f5}
 .holiday-note{color:#8a5a21;font-size:12px}
+
+/* Keep staff settings reachable on short screens and touch devices. */
+#staffEditor{
+ width:min(340px,calc(100vw - 16px));
+ max-height:calc(100vh - 16px);
+ max-height:calc(100dvh - 16px);
+ overflow-y:auto;
+ overscroll-behavior-y:contain;
+ -webkit-overflow-scrolling:touch;
+}
+#staffEditor>div:last-child{
+ position:sticky;
+ bottom:-14px;
+ z-index:1;
+ margin-bottom:-14px;
+ padding:10px 0 14px;
+ background:#fff;
+ border-top:1px solid #e8ebee;
+}
