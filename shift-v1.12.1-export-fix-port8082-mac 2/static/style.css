@@ -95,3 +95,8 @@ body.schedule-compact{overflow:hidden}
 .schedule-compact .break,.schedule-compact .badge,.schedule-compact .del,.schedule-compact .kibo-tag,.schedule-compact .addrow{display:none}
 .schedule-compact .daily-total-row th,.schedule-compact .daily-total-row td{height:24px;font-size:11px;padding:0 3px}
 .schedule-compact #status:not(:empty){display:block!important;flex:none;height:auto;padding:4px}
+
+/* Preserve store branding in the full-height phone overview. */
+.compact-brand{display:none}
+.schedule-compact .compact-brand{display:flex;align-items:center;justify-content:center;gap:7px;margin:0 0 6px;color:#176a45;font-size:14px;line-height:1.2}
+.schedule-compact .compact-brand .betoya-logo{display:block;width:28px;height:28px;flex:none}
