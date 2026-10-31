@@ -100,3 +100,9 @@ body.schedule-compact{overflow:hidden}
 .compact-brand{display:none}
 .schedule-compact .compact-brand{display:flex;align-items:center;justify-content:center;gap:7px;margin:0 0 6px;color:#176a45;font-size:14px;line-height:1.2}
 .schedule-compact .compact-brand .betoya-logo{display:block;width:28px;height:28px;flex:none}
+
+/* Make permanent employees easy to distinguish in both schedule views. */
+.staff.fulltime-staff{background:#d8eddf!important;border-left:4px solid #10764e}
+.fulltime-staff .staffname{font-weight:900;color:#064d32}
+.fulltime-staff .badge{background:#10764e;color:#fff;font-weight:700}
+.lg.ft{background:#d8eddf;border-color:#10764e}
