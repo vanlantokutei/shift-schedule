@@ -70,3 +70,28 @@ thead .holiday-name{font-size:10px;line-height:1.4;white-space:normal;overflow-w
 
 /* Hide the retired email shortcut in older schedule markup. */
 .staff .emailbtn{display:none!important}
+
+/* Full-height overview: fit every employee row, swipe sideways for days. */
+#compactSchedule{margin-left:auto;border:1px solid #cbded2;border-radius:9px;padding:7px 10px;background:#fff;color:#176a45;font-weight:700;white-space:nowrap}
+.compact-help{display:none}
+body.schedule-compact{overflow:hidden}
+.schedule-compact main{position:fixed;inset:0;z-index:10;height:100vh;height:100dvh;display:flex;flex-direction:column;padding:6px;background:#fafaf8}
+.schedule-compact main>:not(.schedule-controls):not(.tablewrap){display:none!important}
+.schedule-compact .schedule-controls{flex:none;padding:6px 8px;margin-bottom:5px}
+.schedule-compact .view-switch{margin-bottom:5px}
+.schedule-compact .date-actions{display:none}
+.schedule-compact .date-tools>strong{font-size:12px}
+.schedule-compact .compact-help{display:block;margin:5px 0 0;color:#607078;font-size:11px}
+.schedule-compact .tablewrap{flex:1;min-height:0;max-height:none;border-radius:8px;overflow-x:auto;overflow-y:hidden}
+.schedule-compact table{min-width:1080px}
+.schedule-compact thead th{height:36px;font-size:11px;padding:2px}
+.schedule-compact thead small{font-size:9px;margin:0}
+.schedule-compact .holiday-name{display:none}
+.schedule-compact thead th:first-child,.schedule-compact tbody th{width:110px;padding:0 4px}
+.schedule-compact .staff-row,.schedule-compact .staff,.schedule-compact .shift{height:var(--compact-row,24px)}
+.schedule-compact .staff-row th,.schedule-compact .staff-row td{padding-top:0;padding-bottom:0;line-height:1}
+.schedule-compact .staffname{display:block;overflow:hidden;text-overflow:ellipsis;line-height:1;font-size:var(--compact-font,11px)}
+.schedule-compact .work,.schedule-compact .total,.schedule-compact .rate,.schedule-compact .pay{font-size:var(--compact-font,11px);line-height:1;white-space:nowrap}
+.schedule-compact .break,.schedule-compact .badge,.schedule-compact .del,.schedule-compact .kibo-tag,.schedule-compact .addrow{display:none}
+.schedule-compact .daily-total-row th,.schedule-compact .daily-total-row td{height:24px;font-size:11px;padding:0 3px}
+.schedule-compact #status:not(:empty){display:block!important;flex:none;height:auto;padding:4px}
