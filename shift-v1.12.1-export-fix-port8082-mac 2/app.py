@@ -237,7 +237,7 @@ def kibo():
  except Exception:m=monday()+timedelta(days=7)
  days=[m+timedelta(days=i) for i in range(7)]
  kibo_open=datetime.combine(m-timedelta(days=7),datetime.min.time(),ZoneInfo('Asia/Tokyo'))
- kibo_deadline=kibo_open+timedelta(days=4,hours=22)
+ kibo_deadline=kibo_open+timedelta(days=3,hours=22)
  kibo_now=datetime.now(ZoneInfo('Asia/Tokyo'))
  kibo_closed=not (kibo_open<=kibo_now<kibo_deadline)
  kibo_before_open=kibo_now<kibo_open
