@@ -106,3 +106,14 @@ body.schedule-compact{overflow:hidden}
 .fulltime-staff .staffname{font-weight:900;color:#064d32}
 .fulltime-staff .badge{background:#10764e;color:#fff;font-weight:700}
 .lg.ft{background:#d8eddf;border-color:#10764e}
+
+/* Former employees remain readable in historical schedules. */
+.archived-badge{display:block;font-size:11px;font-weight:500;color:#66746d}
+.staff-row[data-active="0"] .staffname{cursor:default}
+.staff-row[data-active="0"] td.shift{cursor:default}
+.archived-staff-panel{margin:18px 0;padding:14px;border:1px solid #ccd5d8;border-radius:10px;background:#fff}
+.archived-staff-panel summary{cursor:pointer;font-weight:700}
+.archived-staff-panel p{font-size:14px;line-height:1.6;color:#53635b}
+.archived-staff-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid #e3e9e5}
+.archived-staff-item>div{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.archived-staff-item button{min-height:40px;padding:8px 14px}

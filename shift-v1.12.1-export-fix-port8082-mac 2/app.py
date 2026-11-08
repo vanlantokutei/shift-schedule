@@ -32,6 +32,14 @@ def init():
  if rows and all((r['sort_order'] or 0)==0 for r in rows):
   for i,r in enumerate(rows): c.execute('update staff set sort_order=%s where id=%s',(i,r['id']))
  c.commit();c.close()
+def schedule_staff(staff, rows):
+ # Keep former employees visible wherever their recorded shifts contribute to totals.
+ recorded_ids={r['staff_id'] for r in rows}
+ return [s for s in staff if s['active'] or s['id'] in recorded_ids]
+
+def active_employee(c, staff_id):
+ return c.execute('select id from staff where id=%s and active=1',(staff_id,)).fetchone() is not None
+
 def japan_today():
  return datetime.now(ZoneInfo('Asia/Tokyo')).date()
 def monday(s=None):
@@ -50,14 +58,17 @@ def hours(r):
  return max(0,hdiff(r['start'],r['end'])-br)
 @app.route('/')
 def index():
- m=monday(request.args['week']) if request.args.get('week') else manager_week();days=[m+timedelta(days=i) for i in range(7)];c=db();staff=c.execute('select * from staff where active=1 order by sort_order,id').fetchall();rows=c.execute('select * from shifts where work_date between %s and %s',(str(days[0]),str(days[-1]))).fetchall();# Monthly totals for the month containing the week start.
+ m=monday(request.args['week']) if request.args.get('week') else manager_week();days=[m+timedelta(days=i) for i in range(7)];c=db();all_staff=c.execute('select s.*, (select max(work_date) from shifts where staff_id=s.id) as last_work_date from staff s order by sort_order,id').fetchall();rows=c.execute('select * from shifts where work_date between %s and %s',(str(days[0]),str(days[-1]))).fetchall();# Monthly totals for the month containing the week start.
  month_start=m.replace(day=1)
  if m.month==12: month_end=date(m.year+1,1,1)-timedelta(days=1)
  else: month_end=date(m.year,m.month+1,1)-timedelta(days=1)
  month_rows=c.execute('select * from shifts where work_date between %s and %s',(str(month_start),str(month_end))).fetchall()
+ staff=schedule_staff(all_staff,rows+month_rows)
+ active_staff=[s for s in all_staff if s['active']]
+ archived_staff=[s for s in all_staff if not s['active']]
  # 希望 status always shows the upcoming week, same week employees see on /kibo.
  kibo_week=monday()+timedelta(days=7); kibo_end=kibo_week+timedelta(days=6)
- kibo_rows=c.execute("select staff_id,submitted_at,(submitted_at + interval '9 hours') as submitted_at_jst from kibo_submissions where week_start=%s",(str(kibo_week),)).fetchall()
+ kibo_rows=c.execute("select k.staff_id,k.submitted_at,(submitted_at + interval '9 hours') as submitted_at_jst from kibo_submissions k join staff s on s.id=k.staff_id where k.week_start=%s and s.active=1",(str(kibo_week),)).fetchall()
  latest_kibo=max((r['submitted_at'] for r in kibo_rows if r['submitted_at']),default=None)
  # Backward compatibility: 希望 already submitted before submission tracking was added.
  legacy_kibo=c.execute('select distinct staff_id from shifts where work_date between %s and %s and is_kibo=1',(str(kibo_week),str(kibo_end))).fetchall()
@@ -71,7 +82,7 @@ def index():
  baito_monthly_pay=sum(round(monthly_totals[s['id']]*(s['hourly_rate'] or 0)) for s in staff if s['staff_type']=='baito')
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
- return render_template('index.html',**holiday_context(days),staff=staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_deadline=kibo_deadline,kibo_closed=not(kibo_open<=kibo_now<kibo_deadline),kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+ return render_template('index.html',**holiday_context(days),staff=staff,active_staff=active_staff,archived_staff=archived_staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_deadline=kibo_deadline,kibo_closed=not(kibo_open<=kibo_now<kibo_deadline),kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
 def suggest_draft_breaks(draft,existing):
  """Preview-only breaks, staggered in 15-minute increments."""
  def mins(t):return int(t[:2])*60+int(t[3:])
@@ -158,7 +169,8 @@ def month_view():
  next_first=date(y+1,1,1) if mo==12 else date(y,mo+1,1)
  last=next_first-timedelta(days=1); days=[first+timedelta(days=i) for i in range((last-first).days+1)]
  prev=(first-timedelta(days=1)).replace(day=1); nxt=next_first
- c=db(); staff=c.execute('select * from staff where active=1 order by sort_order,id').fetchall(); rows=c.execute('select * from shifts where work_date between %s and %s',(str(first),str(last))).fetchall(); c.close()
+ c=db(); all_staff=c.execute('select * from staff order by sort_order,id').fetchall(); rows=c.execute('select * from shifts where work_date between %s and %s',(str(first),str(last))).fetchall(); c.close()
+ staff=schedule_staff(all_staff,rows)
  sm={(r['staff_id'],r['work_date']):r for r in rows}; totals={s['id']:sum(hours(sm.get((s['id'],str(d)))) for d in days) for s in staff}
  return render_template('month.html',**holiday_context(days),staff=staff,days=days,sm=sm,totals=totals,year=y,month=mo,prev_year=prev.year,prev_month=prev.month,next_year=nxt.year,next_month=nxt.month)
 
@@ -183,6 +195,8 @@ def shift():
   if len(intervals)==2 and max(a for a,b in intervals)<min(b for a,b in intervals):raise ValueError()
  except (ValueError,TypeError):return jsonify(ok=False,error='Kiểm tra giờ làm và giờ nghỉ: nghỉ phải nằm trong ca và không trùng nhau.'),400
  c=db()
+ if not active_employee(c,x.get('staff_id')):
+  c.close();return jsonify(ok=False,error='Nhân viên đã ngừng hoạt động. Hãy khôi phục trước khi sửa ca.'),409
  if not start:c.execute('delete from shifts where staff_id=%s and work_date=%s',(x['staff_id'],x['date']))
  else:c.execute('''insert into shifts(staff_id,work_date,start,"end",break_start,break_end,break2_start,break2_end,break_min,is_kibo) values(%s,%s,%s,%s,%s,%s,%s,%s,0,0) on conflict(staff_id,work_date) do update set start=excluded.start,"end"=excluded."end",break_start=excluded.break_start,break_end=excluded.break_end,break2_start=excluded.break2_start,break2_end=excluded.break2_end,is_kibo=0''',(x['staff_id'],x['date'],start,end,x.get('break_start') or None,x.get('break_end') or None,x.get('break2_start') or None,x.get('break2_end') or None))
  c.commit();c.close();return jsonify(ok=True)
@@ -194,6 +208,8 @@ def kibo_prefill():
  except Exception:return jsonify(ok=False,error='Dữ liệu không hợp lệ'),400
  mode=(request.args.get('mode') or 'fixed').strip()
  c=db(); result={}
+ if not active_employee(c,staff_id):
+  c.close();return jsonify(ok=False,error='Nhân viên không còn hoạt động.'),409
  if mode=='previous':
   prev=week-timedelta(days=7)
   rows=c.execute('select work_date,start,"end" from shifts where staff_id=%s and work_date between %s and %s and is_kibo=1',(staff_id,str(prev),str(prev+timedelta(days=6)))).fetchall()
@@ -211,6 +227,8 @@ def kibo_fixed():
  try:staff_id=int(x.get('staff_id') or 0)
  except Exception:return jsonify(ok=False,error='Nhân viên không hợp lệ'),400
  entries=x.get('entries') or [];c=db()
+ if not active_employee(c,staff_id):
+  c.close();return jsonify(ok=False,error='Nhân viên không còn hoạt động.'),409
  try:
   c.execute('delete from fixed_kibo where staff_id=%s',(staff_id,))
   saved=0
@@ -227,7 +245,10 @@ def kibo_fixed():
 def kibo_fixed_delete():
  try:staff_id=int(request.args.get('staff_id') or 0)
  except Exception:return jsonify(ok=False),400
- c=db();c.execute('delete from fixed_kibo where staff_id=%s',(staff_id,));c.commit();c.close()
+ c=db()
+ if not active_employee(c,staff_id):
+  c.close();return jsonify(ok=False,error='Nhân viên không còn hoạt động.'),409
+ c.execute('delete from fixed_kibo where staff_id=%s',(staff_id,));c.commit();c.close()
  return jsonify(ok=True)
 
 @app.route('/kibo',methods=['GET','POST'])
@@ -249,7 +270,10 @@ def kibo():
  try:selected_id=int(request.values.get('staff_id') or (staff[0]['id'] if staff else 0))
  except Exception:selected_id=0
  valid_ids={s['id'] for s in staff}
- if selected_id not in valid_ids:selected_id=staff[0]['id'] if staff else 0
+ if selected_id not in valid_ids:
+  if request.values.get('staff_id') or request.method=='POST':
+   c.close();return 'Nhân viên không còn hoạt động. Vui lòng quay lại trang chọn tên hoặc liên hệ quản lý.',409
+  selected_id=staff[0]['id'] if staff else 0
  if request.method=='POST':
   if kibo_closed:error='Chưa đến thời gian đăng ký lịch.' if kibo_before_open else 'Đã hết hạn đăng ký lịch. Vui lòng liên hệ quản lý nếu cần thay đổi.'
   kibo_save_t0=perf_counter()
@@ -292,11 +316,18 @@ def kibo():
  return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error,kibo_closed=kibo_closed,kibo_before_open=kibo_before_open,open_text=open_text,deadline_text=deadline_text,kibo_open_iso=kibo_open.isoformat(),kibo_deadline_iso=kibo_deadline.isoformat())
 @app.post('/staff')
 def staff_action():
- x=request.get_json();c=db();a=x.get('action')
+ x=request.get_json() or {};c=db();a=x.get('action')
+ if a in {'rename','update'} and not active_employee(c,x.get('id')):
+  c.close();return jsonify(ok=False,error='Hãy khôi phục nhân viên trước khi chỉnh sửa.'),409
  if a=='add' and x.get('name','').strip():
   mx=c.execute('select coalesce(max(sort_order),-1)+1 n from staff').fetchone()['n'];sid=c.execute('insert into staff(name,sort_order) values(%s,%s) returning id',(x['name'].strip(),mx)).fetchone()['id']
  elif a=='rename' and x.get('name','').strip(): c.execute('update staff set name=%s where id=%s',(x['name'].strip(),x['id']));sid=x['id']
- elif a=='delete': c.execute('update staff set active=0 where id=%s',(x['id'],));sid=x['id']
+ elif a in {'archive','delete','restore'}:
+  # Legacy delete requests also archive; never remove shifts, wages or fixed Kibo.
+  sid=x.get('id')
+  if not c.execute('select id from staff where id=%s',(sid,)).fetchone():
+   c.close();return jsonify(ok=False,error='Không tìm thấy nhân viên.'),404
+  c.execute('update staff set active=%s where id=%s',(1 if a=='restore' else 0,sid))
  elif a=='update':
   c.execute('update staff set staff_type=%s,pay_type=%s,hourly_rate=%s,monthly_salary=%s where id=%s',(x.get('staff_type','baito'),x.get('pay_type','hourly'),int(x.get('hourly_rate') or 0),int(x.get('monthly_salary') or 0),x['id']));sid=x['id']
  else:c.close();return jsonify(ok=False),400
