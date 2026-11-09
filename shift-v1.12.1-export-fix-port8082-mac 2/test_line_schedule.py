@@ -3,10 +3,8 @@ import base64
 from datetime import date, datetime, timedelta, timezone
 import hashlib
 import hmac
-import io
 import json
 
-from PIL import Image
 import pytest
 import line_schedule as line
 from test_manager_auth import env, setup, csrf, LocalConnection
@@ -40,7 +38,8 @@ def state(env, monkeypatch):
     app, raw, _ = env
     connect = lambda: Connection(raw)
     service = line.install_line_schedule(app, connect, start_worker=False)
-    raw.executescript('''CREATE TABLE staff(id INTEGER PRIMARY KEY,name TEXT,active INTEGER,sort_order INTEGER,hourly_rate INTEGER);
+    raw.executescript('''CREATE TABLE kibo_deadlines(week_start TEXT PRIMARY KEY,deadline TEXT);
+        CREATE TABLE staff(id INTEGER PRIMARY KEY,name TEXT,active INTEGER,sort_order INTEGER,hourly_rate INTEGER);
         INSERT INTO staff VALUES(1,'Lân',1,0,99999);
         INSERT INTO staff VALUES(2,'Sương',1,1,99999);
         CREATE TABLE shifts(staff_id INTEGER,work_date TEXT,start TEXT,"end" TEXT,break_start TEXT,
@@ -67,26 +66,32 @@ def test_monday_10am_japan(utc,expected):
     assert line.scheduled_week(datetime(*utc,tzinfo=timezone.utc)) == expected
 
 
-def test_worker_once_after_restart_and_no_wishes_or_pay(state,monkeypatch):
+def test_worker_once_after_restart_sends_registration_link_not_image(state):
     app, raw, service, calls, _ = state
-    rendered = []
-    real = line.schedule_image
-    def capture(week,staff,rows):
-        rendered.append((staff,rows))
-        return real(week,staff,rows)
-    monkeypatch.setattr(line,'schedule_image',capture)
     now = datetime(2026,11,16,10,tzinfo=line.JST)
     service.tick(now)
     line.LineSchedule(app,service.connect).tick(now + timedelta(minutes=2))
     assert len(calls)==1
-    assert len(rendered[0][1])==1
-    assert all('hourly_rate' not in person for person in rendered[0][0])
-    png = raw.execute('SELECT png FROM line_schedule_deliveries').fetchone()['png']
-    assert Image.open(io.BytesIO(png)).size == (1800,372)
-    assert len(png)<1_000_000
     payload = calls[0][2]
-    assert payload['to']=='Cstaff' and payload['messages'][1]['type']=='image'
+    assert payload['to']=='Cstaff' and len(payload['messages'])==1
+    message=payload['messages'][0]
+    assert message['type']=='text'
+    assert '23/11–29/11/2026' in message['text']
+    assert '19/11/2026 lúc 22:00' in message['text']
+    assert '/kibo?week=2026-11-23' in message['text']
+    assert 'Lân' not in message['text'] and '99999' not in message['text']
     assert raw.execute('SELECT accepted_at FROM line_schedule_deliveries').fetchone()['accepted_at']
+    assert raw.execute('SELECT week_start FROM line_schedule_deliveries').fetchone()[0]=='reminder:2026-11-16'
+
+
+def test_reminder_uses_extended_deadline_and_skips_closed_windows(state):
+    _,raw,service,calls,_=state
+    raw.execute('INSERT INTO kibo_deadlines VALUES(?,?)',('2026-11-23',datetime(2026,11,20,23,30,tzinfo=line.JST).isoformat()));raw.commit()
+    now=datetime(2026,11,16,10,tzinfo=line.JST)
+    service.tick(now)
+    assert '20/11/2026 lúc 23:30' in calls[0][2]['messages'][0]['text']
+    assert service.deliver(date(2026,11,16),datetime(2026,11,21,10,tzinfo=line.JST),'reminder-test:closed',test=True)=='closed'
+    assert len(calls)==1
 
 
 def test_retry_preserves_snapshot_and_key(state,monkeypatch):
@@ -98,7 +103,7 @@ def test_retry_preserves_snapshot_and_key(state,monkeypatch):
     monkeypatch.setattr(line,'line_request',fail)
     now=datetime(2026,11,16,10,tzinfo=line.JST)
     service.tick(now)
-    raw.execute("UPDATE shifts SET start='09:00'");raw.commit()
+    raw.execute('INSERT INTO kibo_deadlines VALUES(?,?)',('2026-11-23',datetime(2026,11,20,23,30,tzinfo=line.JST).isoformat()));raw.commit()
     service.tick(now+timedelta(minutes=1))
     assert len(attempts)==1
     service.tick(now+timedelta(minutes=5))
@@ -112,11 +117,11 @@ def test_manual_tuesday_delivery_does_not_consume_weekly_job(state):
     _,raw,service,calls,_=state
     now=datetime(2026,11,17,10,tzinfo=line.JST)
     week=date(2026,11,16)
-    assert service.deliver(week,now,'test:one',test=True)=='sent'
-    assert service.deliver(week,now,'test:one',test=True)=='sent'
+    assert service.deliver(week,now,'reminder-test:one',test=True)=='sent'
+    assert service.deliver(week,now,'reminder-test:one',test=True)=='sent'
     assert len(calls)==1 and calls[0][2]['messages'][0]['text'].startswith('GỬI THỬ')
     assert raw.execute('SELECT enabled FROM line_schedule_config').fetchone()[0]==1
-    assert raw.execute('SELECT week_start FROM line_schedule_deliveries').fetchone()[0]=='test:one'
+    assert raw.execute('SELECT week_start FROM line_schedule_deliveries').fetchone()[0]=='reminder-test:one'
     service.tick(datetime(2026,11,16,10,tzinfo=line.JST))
     assert len(calls)==2
     assert not calls[1][2]['messages'][0]['text'].startswith('GỬI THỬ')
@@ -136,21 +141,21 @@ def test_manual_button_requires_owner_csrf_and_nonce(state,monkeypatch):
     data={'action':'test','csrf_token':token,'test_key':nonce}
     assert owner.post('/admin/line',data={**data,'test_key':'wrong'},base_url='https://localhost').status_code==403
     result=owner.post('/admin/line',data=data,base_url='https://localhost')
-    assert result.status_code==200 and 'LINE đã nhận yêu cầu gửi thử'.encode() in result.data
+    assert result.status_code==200 and 'LINE đã nhận tin nhắc đăng ký'.encode() in result.data
     assert owner.post('/admin/line',data=data,base_url='https://localhost').status_code==200
     assert len(calls)==1
     assert raw.execute('SELECT enabled FROM line_schedule_config').fetchone()[0]==1
 
 
-def test_disabled_or_no_confirmed_schedule_does_not_send(state):
+def test_disabled_stops_reminder_but_empty_schedule_still_gets_reminder(state):
     _,raw,service,calls,_=state
     now=datetime(2026,11,16,10,tzinfo=line.JST)
     raw.execute('UPDATE line_schedule_config SET enabled=0');raw.commit()
     service.tick(now);assert not calls
     raw.execute('UPDATE line_schedule_config SET enabled=1')
-    raw.execute('UPDATE shifts SET is_kibo=1');raw.commit()
-    service.tick(now);assert not calls
-    assert raw.execute('SELECT count(*) FROM line_schedule_deliveries').fetchone()[0]==0
+    raw.execute('DELETE FROM shifts');raw.commit()
+    service.tick(now);assert len(calls)==1
+    assert raw.execute('SELECT count(*) FROM line_schedule_deliveries').fetchone()[0]==1
 
 
 def webhook(client,events,secret='s'*32):
@@ -198,9 +203,8 @@ def test_manager_auth_csrf_encrypted_secrets_and_image_expiry(state):
     assert service.credentials(config)['token']=='z'*50
     raw.execute("UPDATE line_schedule_config SET enabled=1,group_id='Cstaff'");raw.commit()
     service.tick(datetime.now(line.JST).replace(year=2026,month=11,day=16,hour=10))
-    row=raw.execute('SELECT image_id FROM line_schedule_deliveries').fetchone()
-    assert row
-    path='/line/schedule/'+row['image_id']+'.png'
+    raw.execute('INSERT INTO line_schedule_deliveries VALUES(?,?,?,?,?,?,?,?)',('legacy-image','x'*43,b'legacy-png','{}','legacy-key',None,datetime.now(line.JST).isoformat(),(datetime.now(line.JST)+timedelta(days=1)).isoformat()));raw.commit()
+    path='/line/schedule/'+'x'*43+'.png'
     assert client.get(path,base_url='https://localhost').status_code==200
     raw.execute('UPDATE line_schedule_deliveries SET expires_at=?',((datetime.now(line.JST)-timedelta(days=1)).isoformat(),));raw.commit()
     assert client.get(path,base_url='https://localhost').status_code==404

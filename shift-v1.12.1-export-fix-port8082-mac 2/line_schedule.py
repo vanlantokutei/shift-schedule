@@ -1,4 +1,4 @@
-"""Weekly LINE schedule delivery, opt-in and limited to one paired group."""
+"""Weekly LINE registration reminders, opt-in and limited to one paired group."""
 import base64
 import hashlib
 import hmac
@@ -17,6 +17,7 @@ import uuid
 from cryptography.fernet import Fernet
 from flask import Response, abort, g, jsonify, render_template, request, session
 from PIL import Image, ImageDraw, ImageFont
+from kibo_deadlines import window as kibo_window
 
 JST = ZoneInfo('Asia/Tokyo')
 DELIVERY_LOCK = 72905439
@@ -27,6 +28,24 @@ def scheduled_week(now):
     """Monday 10:00 JST, with same-day recovery after restarts."""
     now = now.astimezone(JST)
     return now.date() if now.weekday() == 0 and now.hour >= 10 else None
+
+
+def registration_reminder(connection, current_week, now, test=False):
+    """Match the employee Kibo week and its current deadline, including extensions."""
+    target = current_week + timedelta(days=7)
+    opens, deadline = kibo_window(connection, target)
+    if not opens <= now < deadline:
+        return None
+    label = 'GỬI THỬ · ' if test else ''
+    return (
+        f'{label}📢 ベト屋築地店 — Nhắc đăng ký 希望シフト\n\n'
+        f'Mọi người vui lòng đăng ký lịch rảnh cho tuần '
+        f'{target:%d/%m}–{target + timedelta(days=6):%d/%m/%Y}.\n'
+        f'⏰ Hạn đăng ký: {deadline:%d/%m/%Y lúc %H:%M} (giờ Nhật).\n\n'
+        f'📅 Đăng ký tại đây:\n'
+        f'https://shift-schedule-1fk2.onrender.com/kibo?week={target.isoformat()}\n\n'
+        'Cảm ơn mọi người!'
+    )
 
 
 def signature_valid(secret, body, signature):
@@ -125,7 +144,7 @@ class LineSchedule:
         now = now or datetime.now(JST)
         week = scheduled_week(now)
         if week:
-            return self.deliver(week, now, str(week))
+            return self.deliver(week, now, 'reminder:' + str(week))
 
     def deliver(self, week, now, delivery_key, test=False):
         with self.connect() as c:
@@ -145,28 +164,19 @@ class LineSchedule:
                           ('Nhóm nhận đã đổi. Lần gửi đang chờ của tuần này đã được dừng.',))
                 return 'group_changed'
             if not job:
-                rows = c.execute('''SELECT staff_id,work_date,start,"end",break_start,break_end,
-                    break2_start,break2_end FROM shifts WHERE work_date BETWEEN %s AND %s
-                    AND COALESCE(is_kibo,0)=0 AND start IS NOT NULL AND "end" IS NOT NULL''',
-                    (str(week), str(week + timedelta(days=6)))).fetchall()
-                if not rows:
+                text = registration_reminder(c, week, now, test=test)
+                if text is None:
                     c.execute('UPDATE line_schedule_config SET last_error=%s WHERE id=1',
-                              ('Chưa có lịch làm đã xếp cho tuần này. Chưa gửi.',))
-                    return 'empty'
-                staff = c.execute('SELECT id,name,active FROM staff ORDER BY sort_order,id').fetchall()
-                recorded = {r['staff_id'] for r in rows}
-                staff = [s for s in staff if s['active'] or s['id'] in recorded]
+                              ('Đăng ký 希望シフト cho tuần tới chưa mở hoặc đã đóng. Chưa gửi nhắc.',))
+                    return 'closed'
                 image_id = secrets.token_urlsafe(32)
-                image_url = config['public_origin'] + '/line/schedule/' + image_id + '.png'
-                payload = {'to': config['group_id'], 'messages': [
-                    {'type': 'text', 'text': ('GỬI THỬ · ' if test else '') + f'Lịch ベト屋築地店 · {week:%d/%m}–{week + timedelta(days=6):%d/%m/%Y}'},
-                    {'type': 'image', 'originalContentUrl': image_url, 'previewImageUrl': image_url}]}
+                payload = {'to': config['group_id'], 'messages': [{'type': 'text', 'text': text}]}
                 c.execute('''INSERT INTO line_schedule_deliveries
                     (week_start,image_id,png,payload,retry_key,next_attempt,expires_at)
                     VALUES(%s,%s,%s,%s,%s,%s,%s)''',
-                    (delivery_key, image_id, schedule_image(week, staff, rows), json.dumps(payload),
+                    (delivery_key, image_id, b'', json.dumps(payload),
                      str(uuid.uuid4()), now, now + timedelta(days=7)))
-                # LINE fetches the image on another connection, so publish it before sending.
+                # Persist the exact reminder and retry key before calling LINE.
                 c.commit()
                 job = c.execute('SELECT * FROM line_schedule_deliveries WHERE week_start=%s', (delivery_key,)).fetchone()
             try:
@@ -241,7 +251,7 @@ def install_line_schedule(app, connect, start_worker=True):
                 elif action == 'enable':
                     if config['credentials'] and config['group_id']:
                         c.execute('UPDATE line_schedule_config SET enabled=1,last_error=NULL WHERE id=1')
-                        notice = 'Đã bật gửi ảnh lịch thứ Hai lúc 10:00, giờ Nhật.'
+                        notice = 'Đã bật nhắc đăng ký 希望シフト thứ Hai lúc 10:00, giờ Nhật.'
                     else:
                         notice = 'Cần kết nối bot và ghép nhóm trước khi bật.'
                 elif action == 'test':
@@ -252,23 +262,26 @@ def install_line_schedule(app, connect, start_worker=True):
                     c.commit()
                     now = datetime.now(JST)
                     week = now.date() - timedelta(days=now.weekday())
-                    result = service.deliver(week, now, 'test:' + test_key, test=True)
+                    result = service.deliver(week, now, 'reminder-test:' + test_key, test=True)
                     notice = {
-                        'sent': 'LINE đã nhận yêu cầu gửi thử ảnh lịch tuần này.',
-                        'empty': 'Tuần này chưa có ca làm đã xếp. Chưa gửi thử.',
+                        'sent': 'LINE đã nhận tin nhắc đăng ký 希望シフト gửi thử.',
+                        'closed': 'Đăng ký 希望シフト cho tuần tới chưa mở hoặc đã đóng. Chưa gửi nhắc.',
                         'not_ready': 'Chưa sẵn sàng. Kiểm tra kết nối bot và nhóm nhận.',
                         'pending': 'Lần gửi thử đang chờ. Thử lại sau 5 phút.',
                         'group_changed': 'Nhóm nhận đã đổi. Tải lại trang để tạo lần thử mới.',
                     }.get(result, 'Gửi thử chưa thành công. Vui lòng thử lại sau 5 phút.')
                 elif action == 'disable':
                     c.execute('UPDATE line_schedule_config SET enabled=0 WHERE id=1')
-                    notice = 'Đã tắt gửi tự động.'
+                    notice = 'Đã tắt nhắc đăng ký tự động.'
                 c.commit()
                 config = service.config(c)
-            recent = c.execute('SELECT week_start,accepted_at FROM line_schedule_deliveries ORDER BY week_start DESC LIMIT 5').fetchall()
+            recent = c.execute('SELECT week_start,accepted_at FROM line_schedule_deliveries ORDER BY next_attempt DESC LIMIT 5').fetchall()
+            now = datetime.now(JST)
+            current_week = now.date() - timedelta(days=now.weekday())
+            reminder_preview = registration_reminder(c, current_week, now)
         return render_template('line_settings.html', config=config, notice=notice, recent=recent,
                                pair_code=session.get('line_pair_code') if config['pair_hash'] else None,
-                               test_key=session.get('line_test_key', ''))
+                               test_key=session.get('line_test_key', ''), reminder_preview=reminder_preview)
 
     @app.get('/admin/line/preview')
     def line_preview():
@@ -341,7 +354,7 @@ def install_line_schedule(app, connect, start_worker=True):
         with connect() as c:
             image = c.execute('SELECT png FROM line_schedule_deliveries WHERE image_id=%s AND expires_at>%s',
                               (image_id, datetime.now(JST))).fetchone()
-        if not image:
+        if not image or not image['png']:
             abort(404)
         return Response(bytes(image['png']), mimetype='image/png')
 
