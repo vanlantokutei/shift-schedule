@@ -342,6 +342,6 @@ def test_flex_card_has_live_date_deadline_and_registration_action(state):
     card=calls[-1][2]['messages'][0]
     contents=json.dumps(card['contents'],ensure_ascii=False)
     assert '23/11 – 29/11' in contents and 'Thứ Sáu · 23:30' in contents
-    assert card['contents']['hero']['url'].endswith('/static/line/pho-betoya.jpg')
+    assert card['contents']['hero']['contents'][0]['url'].endswith('/static/line/pho-betoya.jpg')
     assert card['contents']['footer']['contents'][0]['action']['uri'].endswith('/kibo?week=2026-11-23')
     assert '99999' not in contents
