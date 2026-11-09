@@ -13,7 +13,8 @@
 <p class="note">Ảnh gồm ca làm đã xếp và giờ nghỉ. Lương không xuất hiện trong ảnh. Khi chưa có ca đã xếp, hệ thống chờ và kiểm tra lại trong ngày thứ Hai. Nếu máy chủ tạm dừng, lịch sẽ gửi bù khi máy chủ chạy lại trong ngày thứ Hai.</p>
 <form method="post"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}">
 {% if config.enabled %}<button class="secondary" name="action" value="disable">Tắt gửi tự động</button>{% elif config.credentials and config.group_id %}<button name="action" value="enable">Bật gửi thứ Hai lúc 10:00</button>{% endif %}
-<a class="preview secondary" href="/admin/line/preview" target="_blank" rel="noopener">Xem ảnh lịch tuần này</a></form></section>
+<a class="preview secondary" href="/admin/line/preview" target="_blank" rel="noopener">Xem ảnh lịch tuần này</a></form>
+{% if config.credentials and config.group_id %}<form method="post"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}"><input type="hidden" name="test_key" value="{{test_key}}"><button name="action" value="test" class="secondary">Gửi thử lịch tuần này vào nhóm</button></form><p class="note">Gửi ngay một ảnh lịch có nhãn “GỬI THỬ” vào nhóm đã ghép. Giờ gửi tự động vẫn giữ nguyên.</p>{% endif %}</section>
 <section><h2>1. Kết nối bot</h2>
 <details {% if not config.credentials %}open{% endif %}><summary>{{'Thay đổi khóa kết nối' if config.credentials else 'Nhập khóa từ LINE Developers'}}</summary>
 <p class="note">Dùng bot @323txucc. Dán khóa trực tiếp tại đây, không gửi qua tin nhắn. Thay khóa sẽ tắt gửi tự động và yêu cầu ghép lại nhóm.</p>
@@ -28,5 +29,5 @@
 {% if config.credentials %}<form method="post"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}"><button name="action" value="pair" class="secondary">Tạo mã ghép nhóm</button></form>{% endif %}
 {% if pair_code %}<p>Gửi vào nhóm: <code>/lich {{pair_code}}</code></p><p class="note">Mã có hiệu lực 30 phút, chỉ dùng một lần. Tải lại trang sau khi gửi lệnh.</p>{% endif %}
 <p class="note">Sau khi nhóm đã hiện ở trên, chọn “Bật gửi thứ Hai lúc 10:00”. Đổi nhóm sẽ tắt gửi tự động để bạn kiểm tra trước khi bật lại.</p></section>
-<section><h2>Lịch sử gửi</h2>{% if recent %}<ul>{% for item in recent %}<li>Tuần {{item.week_start}}: {{'LINE đã nhận yêu cầu gửi' if item.accepted_at else 'Đang chờ gửi / thử lại'}}</li>{% endfor %}</ul>{% else %}<p>Chưa có lần gửi nào.</p>{% endif %}</section>
+<section><h2>Lịch sử gửi</h2>{% if recent %}<ul>{% for item in recent %}<li>{{'Gửi thử' if item.week_start.startswith('test:') else 'Tuần ' ~ item.week_start}}: {{'LINE đã nhận yêu cầu gửi' if item.accepted_at else 'Đang chờ gửi / thử lại'}}</li>{% endfor %}</ul>{% else %}<p>Chưa có lần gửi nào.</p>{% endif %}</section>
 </main></body></html>

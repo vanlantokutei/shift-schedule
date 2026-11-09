@@ -124,22 +124,26 @@ class LineSchedule:
     def tick(self, now=None):
         now = now or datetime.now(JST)
         week = scheduled_week(now)
-        if not week:
-            return
+        if week:
+            return self.deliver(week, now, str(week))
+
+    def deliver(self, week, now, delivery_key, test=False):
         with self.connect() as c:
             if not c.execute('SELECT pg_try_advisory_lock(%s) AS locked', (DELIVERY_LOCK,)).fetchone()['locked']:
-                return
+                return 'not_ready'
             # Connection is closed by the context manager, releasing the session lock.
             config = self.config(c)
-            if not config['enabled'] or not config['group_id'] or not config['credentials']:
-                return
-            job = c.execute('SELECT * FROM line_schedule_deliveries WHERE week_start=%s', (str(week),)).fetchone()
-            if job and (job['accepted_at'] or job['next_attempt'] > now):
-                return
+            if (not test and not config['enabled']) or not config['group_id'] or not config['credentials']:
+                return 'not_ready'
+            job = c.execute('SELECT * FROM line_schedule_deliveries WHERE week_start=%s', (delivery_key,)).fetchone()
+            if job and job['accepted_at']:
+                return 'sent'
+            if job and job['next_attempt'] > now:
+                return 'pending'
             if job and json.loads(job['payload'])['to'] != config['group_id']:
                 c.execute('UPDATE line_schedule_config SET last_error=%s WHERE id=1',
                           ('Nhóm nhận đã đổi. Lần gửi đang chờ của tuần này đã được dừng.',))
-                return
+                return 'group_changed'
             if not job:
                 rows = c.execute('''SELECT staff_id,work_date,start,"end",break_start,break_end,
                     break2_start,break2_end FROM shifts WHERE work_date BETWEEN %s AND %s
@@ -148,35 +152,39 @@ class LineSchedule:
                 if not rows:
                     c.execute('UPDATE line_schedule_config SET last_error=%s WHERE id=1',
                               ('Chưa có lịch làm đã xếp cho tuần này. Chưa gửi.',))
-                    return
+                    return 'empty'
                 staff = c.execute('SELECT id,name,active FROM staff ORDER BY sort_order,id').fetchall()
                 recorded = {r['staff_id'] for r in rows}
                 staff = [s for s in staff if s['active'] or s['id'] in recorded]
                 image_id = secrets.token_urlsafe(32)
                 image_url = config['public_origin'] + '/line/schedule/' + image_id + '.png'
                 payload = {'to': config['group_id'], 'messages': [
-                    {'type': 'text', 'text': f'Lịch ベト屋築地店 · {week:%d/%m}–{week + timedelta(days=6):%d/%m/%Y}'},
+                    {'type': 'text', 'text': ('GỬI THỬ · ' if test else '') + f'Lịch ベト屋築地店 · {week:%d/%m}–{week + timedelta(days=6):%d/%m/%Y}'},
                     {'type': 'image', 'originalContentUrl': image_url, 'previewImageUrl': image_url}]}
                 c.execute('''INSERT INTO line_schedule_deliveries
                     (week_start,image_id,png,payload,retry_key,next_attempt,expires_at)
                     VALUES(%s,%s,%s,%s,%s,%s,%s)''',
-                    (str(week), image_id, schedule_image(week, staff, rows), json.dumps(payload),
+                    (delivery_key, image_id, schedule_image(week, staff, rows), json.dumps(payload),
                      str(uuid.uuid4()), now, now + timedelta(days=7)))
                 # LINE fetches the image on another connection, so publish it before sending.
                 c.commit()
-                job = c.execute('SELECT * FROM line_schedule_deliveries WHERE week_start=%s', (str(week),)).fetchone()
+                job = c.execute('SELECT * FROM line_schedule_deliveries WHERE week_start=%s', (delivery_key,)).fetchone()
             try:
                 token = self.credentials(config)['token']
                 line_request(token, '/message/push', json.loads(job['payload']), job['retry_key'])
             except (RuntimeError, KeyError):
                 c.execute('UPDATE line_schedule_config SET last_error=%s WHERE id=1',
-                          ('Gửi LINE chưa thành công. Tự thử lại sau 5 phút trong ngày thứ Hai.',))
+                          (('Gửi thử chưa thành công. Bấm gửi thử lại sau 5 phút.' if test else 'Gửi LINE chưa thành công. Tự thử lại sau 5 phút trong ngày thứ Hai.'),))
                 c.execute('UPDATE line_schedule_deliveries SET next_attempt=%s WHERE week_start=%s',
-                          (now + timedelta(minutes=5), str(week)))
+                          (now + timedelta(minutes=5), delivery_key))
             else:
-                c.execute('UPDATE line_schedule_deliveries SET accepted_at=%s WHERE week_start=%s', (now, str(week)))
+                c.execute('UPDATE line_schedule_deliveries SET accepted_at=%s WHERE week_start=%s', (now, delivery_key))
                 c.execute('UPDATE line_schedule_config SET last_error=NULL WHERE id=1')
+                c.execute('DELETE FROM line_schedule_deliveries WHERE expires_at<%s', (now,))
+                return 'sent'
             c.execute('DELETE FROM line_schedule_deliveries WHERE expires_at<%s', (now,))
+
+            return 'failed'
 
     def loop(self):
         while True:
@@ -198,6 +206,8 @@ def install_line_schedule(app, connect, start_worker=True):
         if g.manager['role'] != 'owner':
             abort(403)
         notice = None
+        if request.method == 'GET':
+            session['line_test_key'] = str(uuid.uuid4())
         with connect() as c:
             config = service.config(c, lock=request.method == 'POST')
             if request.method == 'POST':
@@ -234,6 +244,22 @@ def install_line_schedule(app, connect, start_worker=True):
                         notice = 'Đã bật gửi ảnh lịch thứ Hai lúc 10:00, giờ Nhật.'
                     else:
                         notice = 'Cần kết nối bot và ghép nhóm trước khi bật.'
+                elif action == 'test':
+                    test_key = request.form.get('test_key', '')
+                    if not test_key or not hmac.compare_digest(session.get('line_test_key', ''), test_key):
+                        abort(403)
+                    # Release the config row lock before delivery opens its own connection.
+                    c.commit()
+                    now = datetime.now(JST)
+                    week = now.date() - timedelta(days=now.weekday())
+                    result = service.deliver(week, now, 'test:' + test_key, test=True)
+                    notice = {
+                        'sent': 'LINE đã nhận yêu cầu gửi thử ảnh lịch tuần này.',
+                        'empty': 'Tuần này chưa có ca làm đã xếp. Chưa gửi thử.',
+                        'not_ready': 'Chưa sẵn sàng. Kiểm tra kết nối bot và nhóm nhận.',
+                        'pending': 'Lần gửi thử đang chờ. Thử lại sau 5 phút.',
+                        'group_changed': 'Nhóm nhận đã đổi. Tải lại trang để tạo lần thử mới.',
+                    }.get(result, 'Gửi thử chưa thành công. Vui lòng thử lại sau 5 phút.')
                 elif action == 'disable':
                     c.execute('UPDATE line_schedule_config SET enabled=0 WHERE id=1')
                     notice = 'Đã tắt gửi tự động.'
@@ -241,7 +267,8 @@ def install_line_schedule(app, connect, start_worker=True):
                 config = service.config(c)
             recent = c.execute('SELECT week_start,accepted_at FROM line_schedule_deliveries ORDER BY week_start DESC LIMIT 5').fetchall()
         return render_template('line_settings.html', config=config, notice=notice, recent=recent,
-                               pair_code=session.get('line_pair_code') if config['pair_hash'] else None)
+                               pair_code=session.get('line_pair_code') if config['pair_hash'] else None,
+                               test_key=session.get('line_test_key', ''))
 
     @app.get('/admin/line/preview')
     def line_preview():

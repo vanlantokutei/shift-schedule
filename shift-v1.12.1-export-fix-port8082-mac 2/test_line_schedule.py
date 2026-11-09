@@ -108,6 +108,40 @@ def test_retry_preserves_snapshot_and_key(state,monkeypatch):
     assert len(attempts)==2
 
 
+def test_manual_tuesday_delivery_does_not_consume_weekly_job(state):
+    _,raw,service,calls,_=state
+    now=datetime(2026,11,17,10,tzinfo=line.JST)
+    week=date(2026,11,16)
+    assert service.deliver(week,now,'test:one',test=True)=='sent'
+    assert service.deliver(week,now,'test:one',test=True)=='sent'
+    assert len(calls)==1 and calls[0][2]['messages'][0]['text'].startswith('GỬI THỬ')
+    assert raw.execute('SELECT enabled FROM line_schedule_config').fetchone()[0]==1
+    assert raw.execute('SELECT week_start FROM line_schedule_deliveries').fetchone()[0]=='test:one'
+    service.tick(datetime(2026,11,16,10,tzinfo=line.JST))
+    assert len(calls)==2
+    assert not calls[1][2]['messages'][0]['text'].startswith('GỬI THỬ')
+
+
+def test_manual_button_requires_owner_csrf_and_nonce(state,monkeypatch):
+    app,raw,service,calls,env=state
+    class Clock(datetime):
+        @classmethod
+        def now(cls,tz=None):
+            return cls(2026,11,17,10,tzinfo=line.JST).astimezone(tz or line.JST)
+    monkeypatch.setattr(line,'datetime',Clock)
+    owner=setup(env)
+    token=csrf(owner,'/admin/line')
+    with owner.session_transaction() as data:
+        nonce=data['line_test_key']
+    data={'action':'test','csrf_token':token,'test_key':nonce}
+    assert owner.post('/admin/line',data={**data,'test_key':'wrong'},base_url='https://localhost').status_code==403
+    result=owner.post('/admin/line',data=data,base_url='https://localhost')
+    assert result.status_code==200 and 'LINE đã nhận yêu cầu gửi thử'.encode() in result.data
+    assert owner.post('/admin/line',data=data,base_url='https://localhost').status_code==200
+    assert len(calls)==1
+    assert raw.execute('SELECT enabled FROM line_schedule_config').fetchone()[0]==1
+
+
 def test_disabled_or_no_confirmed_schedule_does_not_send(state):
     _,raw,service,calls,_=state
     now=datetime(2026,11,16,10,tzinfo=line.JST)
