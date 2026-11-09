@@ -422,5 +422,7 @@ install_deadline_route(app, db)
 init()
 from manager_auth import install_manager_auth
 install_manager_auth(app, db)
+from line_schedule import install_line_schedule
+install_line_schedule(app, db)
 if __name__=='__main__':app.run(host='0.0.0.0',port=int(os.environ.get('PORT',8082)),debug=False)
 

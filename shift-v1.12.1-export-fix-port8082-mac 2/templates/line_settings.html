@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gửi lịch qua LINE · ベト屋築地店</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f6f8f6;color:#20342b;font:16px/1.6 system-ui,sans-serif}main{max-width:740px;padding:24px 18px;margin:auto}h1{font-size:26px;line-height:1.3}h2{font-size:19px;margin:0 0 12px}section{margin:18px 0;padding:22px;background:white;border:1px solid #dfe7e1;border-radius:16px}label{display:block;margin:14px 0 4px}input[type=password]{width:100%;padding:12px;border:1px solid #aebdb3;border-radius:8px;font:inherit}button,.preview{display:inline-block;padding:12px 16px;margin:12px 8px 0 0;border:1px solid #10764e;border-radius:9px;background:#10764e;color:white;font:inherit;text-decoration:none;cursor:pointer}.secondary{background:white;color:#10764e}.status{padding:12px 16px;background:#e7f4eb;border-radius:10px}.error{color:#9a3c26}.note{font-size:14px;color:#607067}code{word-break:break-all;background:#eff4f0;padding:3px 5px}form{margin:0}details summary{cursor:pointer;font-weight:700}a{color:#10764e}ul{padding-left:22px}.row{display:flex;gap:10px;flex-wrap:wrap}
+</style></head><body>{% include 'manager_nav.html' %}<main>
+<a href="/">← Về trang lịch</a><h1>Gửi lịch qua LINE</h1>
+<p><b>ベト屋築地店 · Thứ Hai, 10:00 sáng · Giờ Nhật</b><br>Gửi ảnh lịch từ thứ Hai đến Chủ nhật của tuần vừa bắt đầu.</p>
+{% if notice %}<p class="status" role="status">{{notice}}</p>{% endif %}
+<section><h2>Trạng thái</h2>
+<p><b>{{'Đang bật gửi tự động' if config.enabled else 'Chưa bật gửi tự động'}}</b></p>
+<p>Bot: {{'Đã kết nối @323txucc' if config.credentials else 'Chưa kết nối'}}<br>Nhóm nhận: <b>{{config.group_name or 'Chưa ghép nhóm'}}</b></p>
+{% if config.last_error %}<p class="error">{{config.last_error}}</p>{% endif %}
+<p class="note">Ảnh gồm ca làm đã xếp và giờ nghỉ. Lương không xuất hiện trong ảnh. Khi chưa có ca đã xếp, hệ thống chờ và kiểm tra lại trong ngày thứ Hai. Nếu máy chủ tạm dừng, lịch sẽ gửi bù khi máy chủ chạy lại trong ngày thứ Hai.</p>
+<form method="post"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}">
+{% if config.enabled %}<button class="secondary" name="action" value="disable">Tắt gửi tự động</button>{% elif config.credentials and config.group_id %}<button name="action" value="enable">Bật gửi thứ Hai lúc 10:00</button>{% endif %}
+<a class="preview secondary" href="/admin/line/preview" target="_blank" rel="noopener">Xem ảnh lịch tuần này</a></form></section>
+<section><h2>1. Kết nối bot</h2>
+<details {% if not config.credentials %}open{% endif %}><summary>{{'Thay đổi khóa kết nối' if config.credentials else 'Nhập khóa từ LINE Developers'}}</summary>
+<p class="note">Dùng bot @323txucc. Dán khóa trực tiếp tại đây, không gửi qua tin nhắn. Thay khóa sẽ tắt gửi tự động và yêu cầu ghép lại nhóm.</p>
+<form method="post" autocomplete="off"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}"><input type="hidden" name="action" value="credentials">
+<label for="lineSecret">Channel secret</label><input id="lineSecret" name="secret" type="password" required minlength="32" maxlength="32" autocomplete="off">
+<label for="lineToken">Channel access token</label><input id="lineToken" name="token" type="password" required minlength="32" maxlength="1000" autocomplete="off">
+<button>Lưu kết nối bot</button></form></details>
+<p>Webhook URL: <code>https://shift-schedule-1fk2.onrender.com/line/webhook</code></p>
+<p class="note">Trong LINE Developers, đặt URL này và bật Use webhook. Bật cho phép bot tham gia nhóm.</p></section>
+<section><h2>2. Ghép đúng nhóm nhân viên</h2>
+<p>Thêm <b>@323txucc</b> vào bạn bè, rồi mời bot vào nhóm sẽ nhận lịch. Tạo mã và gửi lệnh bên dưới trong chính nhóm đó.</p>
+{% if config.credentials %}<form method="post"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}"><button name="action" value="pair" class="secondary">Tạo mã ghép nhóm</button></form>{% endif %}
+{% if pair_code %}<p>Gửi vào nhóm: <code>/lich {{pair_code}}</code></p><p class="note">Mã có hiệu lực 30 phút, chỉ dùng một lần. Tải lại trang sau khi gửi lệnh.</p>{% endif %}
+<p class="note">Sau khi nhóm đã hiện ở trên, chọn “Bật gửi thứ Hai lúc 10:00”. Đổi nhóm sẽ tắt gửi tự động để bạn kiểm tra trước khi bật lại.</p></section>
+<section><h2>Lịch sử gửi</h2>{% if recent %}<ul>{% for item in recent %}<li>Tuần {{item.week_start}}: {{'LINE đã nhận yêu cầu gửi' if item.accepted_at else 'Đang chờ gửi / thử lại'}}</li>{% endfor %}</ul>{% else %}<p>Chưa có lần gửi nào.</p>{% endif %}</section>
+</main></body></html>
