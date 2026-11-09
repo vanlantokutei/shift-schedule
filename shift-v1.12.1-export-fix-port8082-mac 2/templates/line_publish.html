@@ -1,0 +1,26 @@
+<style>
+#publishLine{border:1px solid #10764e;border-radius:9px;background:#10764e;color:#fff;padding:8px 12px;font-weight:700;cursor:pointer;white-space:nowrap}
+#linePublishStatus{display:block;font-size:13px;color:#176a45;margin:8px 0;white-space:normal}
+#linePublishDialog{width:calc(100vw - 24px);max-width:1000px;max-height:calc(100dvh - 24px);padding:0;border:1px solid #dce7df;border-radius:16px;color:#20342b;background:#fff;overflow:auto}
+#linePublishDialog::backdrop{background:#10201c99}
+.line-publish-content{padding:20px}.line-publish-content h2{margin:0 0 10px;font-size:21px}.line-publish-content p{font-size:14px;line-height:1.6;white-space:normal}
+#linePublishImage{display:block;width:100%;height:auto;border:1px solid #dce7df;border-radius:8px}
+.line-publish-actions{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;padding:14px 20px;background:#fff;border-top:1px solid #dce7df}
+.line-publish-actions button{padding:11px 16px;min-height:44px;border:1px solid #10764e;border-radius:9px;background:#fff;color:#10764e;font:inherit;cursor:pointer}
+.line-publish-actions #linePublishConfirm{background:#10764e;color:#fff}
+.line-publish-actions button:disabled,#publishLine:disabled{opacity:.6;cursor:wait}
+#linePublishError{color:#a13e2b}
+@media(max-width:700px){ #publishLine{font-size:12px;padding:8px}.line-publish-content{padding:14px}}
+</style>
+<dialog id="linePublishDialog" aria-labelledby="linePublishTitle">
+ <div class="line-publish-content">
+  <h2 id="linePublishTitle">Chốt lịch &amp; gửi LINE</h2>
+  <p id="linePublishSummary"></p>
+  <p id="linePublishWishNote"></p>
+  <p>Kiểm tra ảnh bên dưới trước khi gửi. Ảnh gồm ca làm và giờ nghỉ.</p>
+  <img id="linePublishImage" alt="Ảnh lịch tuần sẽ được gửi vào nhóm LINE">
+  <p id="linePublishError" role="alert"></p>
+ </div>
+ <div class="line-publish-actions"><button type="button" id="linePublishCancel">Hủy</button><button type="button" id="linePublishConfirm">Chốt lịch &amp; gửi LINE</button></div>
+</dialog>
+<script src="/static/line_publish.js?v=20261110-publish" defer></script>

@@ -1,5 +1,24 @@
 # Weekly LINE Kibo registration reminder
 
+## Publish a reviewed schedule
+
+The weekly board also has a `Chốt lịch & gửi LINE` button for authenticated
+managers. It opens a preview of the exact week being viewed and names the
+paired recipient group. The dialog discloses the number of remaining Kibo
+wish shifts; confirming approves these shifts as official and sends the PNG.
+Wages and rates are never selected for the image. This action is independent
+of the Monday registration reminder and its enabled/disabled state.
+
+The server compares the preview's content hash before confirming. A changed
+schedule or recipient requires a new preview. Confirmed snapshots are stored
+with a content-based key and a stable LINE retry key. Double submissions of
+an accepted version do not send again; edited schedules can be sent as an
+update. If LINE fails after confirmation, the UI explains that the shifts
+were confirmed but the message was not acknowledged, and allows retrying the
+same persisted payload. Uncertain requests older than 24 hours are not retried.
+
+## Configure weekly reminders
+
 The owner page `/admin/line` configures bot `@323txucc`. Delivery is disabled
 until the owner saves the channel credentials, pairs one group, and enables it.
 

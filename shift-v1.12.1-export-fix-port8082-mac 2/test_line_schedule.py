@@ -25,6 +25,8 @@ class Result:
 
 class Connection(LocalConnection):
     def execute(self, sql, args=()):
+        if sql.startswith('LOCK TABLE'):
+            return Result(self.raw.execute('SELECT 1'))
         if 'pg_try_advisory_lock' in sql:
             return Result(self.raw.execute('SELECT 1 AS locked'))
         sql = sql.replace(' FOR UPDATE', '')
@@ -208,3 +210,101 @@ def test_manager_auth_csrf_encrypted_secrets_and_image_expiry(state):
     assert client.get(path,base_url='https://localhost').status_code==200
     raw.execute('UPDATE line_schedule_deliveries SET expires_at=?',((datetime.now(line.JST)-timedelta(days=1)).isoformat(),));raw.commit()
     assert client.get(path,base_url='https://localhost').status_code==404
+
+
+def publication_preview(owner, week='2026-11-16'):
+    return owner.get('/line/publish-preview?week='+week,base_url='https://localhost').get_json()
+
+
+def publication_post(owner, preview, csrf_token):
+    return owner.post('/line/publish',json={'week':preview['week'],'version':preview['version']},
+                      headers={'X-CSRF-Token':csrf_token},base_url='https://localhost')
+
+
+def test_publish_viewed_week_approves_wishes_once_and_preserves_reminders(state,monkeypatch):
+    app,raw,service,calls,env=state
+    raw.execute('UPDATE line_schedule_config SET enabled=0')
+    raw.execute("INSERT INTO shifts VALUES(2,'2026-11-23','08:00','12:00',NULL,NULL,NULL,NULL,1)");raw.commit()
+    owner=setup(env);token=csrf(owner,'/admin/line')
+    preview=publication_preview(owner)
+    assert preview['ok'] and preview['shifts']==2 and preview['wishes']==1
+    assert not preview['already_sent']
+    image=owner.get('/line/publish-preview.png?week=2026-11-16&version='+preview['version'],base_url='https://localhost')
+    assert image.status_code==200 and image.data.startswith(b'\x89PNG')
+    capture=[]
+    original=line.schedule_image
+    def render(week,people,rows):
+        capture.append((week,people,rows))
+        return original(week,people,rows)
+    monkeypatch.setattr(line,'schedule_image',render)
+    result=publication_post(owner,preview,token)
+    assert result.status_code==200 and result.get_json()['ok']
+    assert capture[0][0]==date(2026,11,16) and len(capture[0][2])==2
+    assert all('hourly_rate' not in p for p in capture[0][1])
+    assert len(calls)==1
+    assert calls[0][2]['to']=='Cstaff'
+    messages=calls[0][2]['messages']
+    assert len(messages)==2 and messages[1]['type']=='image'
+    assert '16/11–22/11/2026' in messages[0]['text'] and 'Lịch đã chốt' in messages[0]['text']
+    assert raw.execute("SELECT sum(is_kibo) FROM shifts WHERE work_date='2026-11-16'").fetchone()[0]==0
+    assert raw.execute("SELECT is_kibo FROM shifts WHERE work_date='2026-11-23'").fetchone()[0]==1
+    assert raw.execute('SELECT enabled FROM line_schedule_config').fetchone()[0]==0
+    duplicate=publication_post(owner,preview,token).get_json()
+    assert duplicate['duplicate'] and len(calls)==1
+    assert publication_preview(owner)['already_sent']
+
+
+def test_publish_rejects_stale_schedule_and_group(state):
+    _,raw,_,calls,env=state
+    owner=setup(env);token=csrf(owner,'/admin/line')
+    preview=publication_preview(owner)
+    raw.execute("UPDATE shifts SET start='08:00' WHERE staff_id=1");raw.commit()
+    assert publication_post(owner,preview,token).status_code==409
+    assert not calls
+    preview=publication_preview(owner)
+    raw.execute("UPDATE line_schedule_config SET group_id='Cchanged'");raw.commit()
+    assert publication_post(owner,preview,token).status_code==409
+    assert not calls
+    assert raw.execute('SELECT sum(is_kibo) FROM shifts').fetchone()[0]==1
+
+
+def test_publish_updates_and_failed_retry_keep_exact_snapshot(state,monkeypatch):
+    _,raw,_,calls,env=state
+    owner=setup(env);token=csrf(owner,'/admin/line')
+    assert publication_post(owner,publication_preview(owner),token).status_code==200
+    raw.execute("UPDATE shifts SET start='08:30' WHERE staff_id=1");raw.commit()
+    preview=publication_preview(owner)
+    assert preview['has_previous'] and not preview['already_sent']
+    attempts=[]
+    def fail(token,path,payload,retry_key):
+        attempts.append((payload,retry_key))
+        raise RuntimeError('timeout')
+    monkeypatch.setattr(line,'line_request',fail)
+    response=publication_post(owner,preview,token)
+    assert response.status_code==502 and response.get_json()['confirmed']
+    assert 'Lịch cập nhật' in attempts[0][0]['messages'][0]['text']
+    def succeed(token,path,payload,retry_key):
+        attempts.append((payload,retry_key));return {}
+    monkeypatch.setattr(line,'line_request',succeed)
+    assert publication_post(owner,preview,token).status_code==200
+    assert attempts[0]==attempts[1]
+    assert raw.execute("SELECT count(*) FROM line_schedule_deliveries WHERE accepted_at IS NOT NULL").fetchone()[0]==2
+    assert raw.execute('SELECT enabled FROM line_schedule_config').fetchone()[0]==1
+
+
+def test_publish_auth_csrf_invalid_week_and_empty_schedule(state):
+    app,raw,_,calls,env=state
+    anonymous=app.test_client()
+    assert anonymous.get('/line/publish-preview?week=2026-11-16',base_url='https://localhost').status_code==302
+    assert anonymous.get('/line/publish-preview.png?week=2026-11-16',base_url='https://localhost').status_code==302
+    assert anonymous.post('/line/publish',json={},base_url='https://localhost').status_code==401
+    owner=setup(env);token=csrf(owner,'/admin/line')
+    assert owner.post('/line/publish',json={},base_url='https://localhost').status_code==403
+    assert owner.get('/line/publish-preview?week=2026-11-17',base_url='https://localhost').status_code==400
+    preview=publication_preview(owner)
+    assert publication_post(owner,{**preview,'version':'á'},token).status_code==409
+    empty=publication_preview(owner,'2026-11-23')
+    assert empty['shifts']==0 and publication_post(owner,empty,token).status_code==400
+    raw.execute('UPDATE line_schedule_config SET group_id=NULL');raw.commit()
+    assert owner.get('/line/publish-preview?week=2026-11-16',base_url='https://localhost').status_code==409
+    assert not calls

@@ -53,6 +53,33 @@ def signature_valid(secret, body, signature):
     return bool(signature) and hmac.compare_digest(expected, signature)
 
 
+def publish_week(value):
+    try:
+        week = datetime.strptime(value, '%Y-%m-%d').date()
+        if week.weekday() or week.isoformat() != value:
+            raise ValueError()
+        return week
+    except (TypeError, ValueError):
+        abort(400, description='Chọn đúng ngày thứ Hai của tuần cần chốt.')
+
+
+def publication_snapshot(connection, week, group_id):
+    rows = connection.execute('''SELECT staff_id,work_date,start,"end",break_start,break_end,
+        break2_start,break2_end,is_kibo FROM shifts WHERE work_date BETWEEN %s AND %s
+        AND start IS NOT NULL AND "end" IS NOT NULL ORDER BY staff_id,work_date''',
+        (str(week), str(week + timedelta(days=6)))).fetchall()
+    people = connection.execute('SELECT id,name,active FROM staff ORDER BY sort_order,id').fetchall()
+    ids = {r['staff_id'] for r in rows}
+    people = [p for p in people if p['active'] or p['id'] in ids]
+    # Wish approval does not change the displayed image, so it must not change
+    # the idempotency key. Names, row order, breaks, week and recipient do.
+    content = {'week': str(week), 'group': group_id,
+               'people': [{'id': p['id'], 'name': p['name']} for p in people],
+               'shifts': [{k: v for k, v in r.items() if k != 'is_kibo'} for r in rows]}
+    version = hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return people, rows, version
+
+
 def line_request(token, path, payload=None, retry_key=None):
     headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
     if retry_key:
@@ -205,11 +232,103 @@ class LineSchedule:
                 self.app.logger.error('LINE weekly delivery check failed; will retry.')
             threading.Event().wait(30)
 
+    def publish(self, week, expected_version, now=None):
+        now = now or datetime.now(JST)
+        with self.connect() as c:
+            if not c.execute('SELECT pg_try_advisory_lock(%s) AS locked', (DELIVERY_LOCK,)).fetchone()['locked']:
+                return {'ok': False, 'error': 'Đang gửi một tin LINE khác. Vui lòng thử lại.'}, 409
+            # Hold table locks only while confirming and persisting the snapshot.
+            # This includes new shifts inserted while the preview was open.
+            c.execute('LOCK TABLE staff IN SHARE MODE')
+            c.execute('LOCK TABLE shifts IN SHARE ROW EXCLUSIVE MODE')
+            config = self.config(c, lock=True)
+            if not config['credentials'] or not config['group_id']:
+                return {'ok': False, 'error': 'Cần kết nối bot và ghép nhóm nhận trong phần Nhắc đăng ký lịch qua LINE.'}, 409
+            people, rows, version = publication_snapshot(c, week, config['group_id'])
+            if not rows:
+                return {'ok': False, 'error': 'Tuần đang xem chưa có ca làm để chốt.'}, 400
+            if (not isinstance(expected_version, str) or not expected_version.isascii()
+                    or not hmac.compare_digest(version, expected_version)):
+                return {'ok': False, 'error': 'Lịch hoặc nhóm nhận vừa thay đổi. Hãy mở lại bản xem trước.'}, 409
+            key = 'published:' + str(week) + ':' + version
+            job = c.execute('SELECT * FROM line_schedule_deliveries WHERE week_start=%s', (key,)).fetchone()
+            if job and job['accepted_at']:
+                return {'ok': True, 'duplicate': True, 'message': 'Phiên bản lịch này đã được LINE tiếp nhận. Không gửi lặp.'}, 200
+            if job and job['expires_at'] - timedelta(days=6) <= now:
+                return {'ok': False, 'error': 'Lần gửi trước đã quá 24 giờ. Kiểm tra nhóm LINE trước khi gửi lại.'}, 409
+            if not job:
+                previous = c.execute('''SELECT week_start FROM line_schedule_deliveries
+                    WHERE week_start LIKE %s AND accepted_at IS NOT NULL LIMIT 1''',
+                    ('published:' + str(week) + ':%',)).fetchone()
+                label = 'Lịch cập nhật' if previous else 'Lịch đã chốt'
+                image_id = secrets.token_urlsafe(32)
+                image_url = config['public_origin'] + '/line/schedule/' + image_id + '.png'
+                payload = {'to': config['group_id'], 'messages': [
+                    {'type': 'text', 'text': f'📅 ベト屋築地店 — {label}\n{week:%d/%m}–{week + timedelta(days=6):%d/%m/%Y}'},
+                    {'type': 'image', 'originalContentUrl': image_url, 'previewImageUrl': image_url}]}
+                c.execute('''INSERT INTO line_schedule_deliveries
+                    (week_start,image_id,png,payload,retry_key,next_attempt,expires_at)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s)''',
+                    (key, image_id, schedule_image(week, people, rows), json.dumps(payload),
+                     str(uuid.uuid4()), now, now + timedelta(days=7)))
+            c.execute('''UPDATE shifts SET is_kibo=0 WHERE work_date BETWEEN %s AND %s
+                AND start IS NOT NULL AND "end" IS NOT NULL''',
+                (str(week), str(week + timedelta(days=6))))
+            # Release schedule locks and make the immutable image fetchable by LINE.
+            c.commit()
+            job = c.execute('SELECT * FROM line_schedule_deliveries WHERE week_start=%s', (key,)).fetchone()
+            try:
+                line_request(self.credentials(config)['token'], '/message/push',
+                             json.loads(job['payload']), job['retry_key'])
+            except RuntimeError:
+                return {'ok': False, 'confirmed': True,
+                        'error': 'Đã chốt ca nhưng LINE chưa xác nhận gửi. Bấm gửi lại để thử lại cùng phiên bản.'}, 502
+            c.execute('UPDATE line_schedule_deliveries SET accepted_at=%s WHERE week_start=%s', (now, key))
+            return {'ok': True, 'duplicate': False,
+                    'message': 'Đã chốt lịch. LINE đã tiếp nhận ảnh gửi vào nhóm ' + config['group_name'] + '.'}, 200
+
 
 def install_line_schedule(app, connect, start_worker=True):
     service = LineSchedule(app, connect)
     service.init()
     app.extensions['line_schedule'] = service
+
+    @app.get('/line/publish-preview')
+    def line_publish_preview():
+        week = publish_week(request.args.get('week'))
+        with connect() as c:
+            config = service.config(c)
+            if not config['credentials'] or not config['group_id']:
+                return jsonify(ok=False, error='Cần kết nối bot và ghép nhóm nhận trước.'), 409
+            people, rows, version = publication_snapshot(c, week, config['group_id'])
+            key = 'published:' + str(week) + ':' + version
+            job = c.execute('SELECT accepted_at FROM line_schedule_deliveries WHERE week_start=%s', (key,)).fetchone()
+            previous = c.execute('''SELECT week_start FROM line_schedule_deliveries
+                WHERE week_start LIKE %s AND accepted_at IS NOT NULL LIMIT 1''',
+                ('published:' + str(week) + ':%',)).fetchone()
+        return jsonify(ok=True, week=str(week), end=str(week + timedelta(days=6)),
+                       group_name=config['group_name'], shifts=len(rows),
+                       wishes=sum(bool(r['is_kibo']) for r in rows), version=version,
+                       already_sent=bool(job and job['accepted_at']), has_previous=bool(previous))
+
+    @app.get('/line/publish-preview.png')
+    def line_publish_preview_image():
+        week = publish_week(request.args.get('week'))
+        with connect() as c:
+            config = service.config(c)
+            people, rows, version = publication_snapshot(c, week, config['group_id'])
+        if request.args.get('version') != version:
+            abort(409)
+        return Response(schedule_image(week, people, rows), mimetype='image/png')
+
+    @app.post('/line/publish')
+    def line_publish():
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify(ok=False, error='Dữ liệu chốt lịch không hợp lệ.'), 400
+        week = publish_week(data.get('week'))
+        result, status = service.publish(week, data.get('version'))
+        return jsonify(result), status
 
     @app.route('/admin/line', methods=['GET', 'POST'])
     def line_settings():
