@@ -18,9 +18,9 @@ def card(alt, title, text, signup_url):
         'hero': {'type': 'box', 'layout': 'vertical', 'paddingAll': '0px', 'contents': [
             {'type': 'image', 'url': PHOTO, 'size': 'full', 'aspectRatio': '20:13',
              'aspectMode': 'fit', 'backgroundColor': '#FFFFFF'},
-            {'type': 'image', 'url': LOGO, 'size': 'full', 'aspectRatio': '953:327',
+            {'type': 'image', 'url': LOGO, 'size': '88px', 'aspectRatio': '3:1',
              'aspectMode': 'fit', 'position': 'absolute', 'offsetTop': '10px',
-             'offsetEnd': '12px', 'width': '88px', 'height': '31px'}]},
+             'offsetEnd': '12px'}]},
         'body': {'type': 'box', 'layout': 'vertical', 'spacing': 'md', 'paddingAll': '18px', 'contents': [
             {'type': 'text', 'text': 'ベト屋築地店', 'color': GREEN, 'size': 'xs', 'weight': 'bold'},
             {'type': 'text', 'text': title, 'weight': 'bold', 'size': 'xl', 'wrap': True, 'color': '#20342B'},

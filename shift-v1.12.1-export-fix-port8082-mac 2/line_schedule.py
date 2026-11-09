@@ -94,6 +94,14 @@ def line_request(token, path, payload=None, retry_key=None):
         # Only this specific 409 means LINE already accepted the same retry key.
         if error.code == 409 and retry_key and error.headers.get('x-line-accepted-request-id'):
             return {}
+        if path == '/message/validate/push' and error.code == 400:
+            try:
+                details = json.loads(error.read(16384)).get('details', [])
+                summary = '; '.join(str(d.get('property', '')) + ': ' + str(d.get('message', ''))
+                                    for d in details if isinstance(d, dict))[:600]
+            except (ValueError, TypeError, AttributeError):
+                summary = ''
+            raise RuntimeError('Thẻ LINE chưa hợp lệ. ' + summary) from None
         raise RuntimeError('LINE trả về mã HTTP ' + str(error.code)) from None
     except (URLError, TimeoutError, OSError, ValueError):
         raise RuntimeError('Không kết nối được LINE. Hệ thống sẽ thử lại.') from None
