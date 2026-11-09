@@ -30,5 +30,6 @@
 {% if config.credentials %}<form method="post"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}"><button name="action" value="pair" class="secondary">Tạo mã ghép nhóm</button></form>{% endif %}
 {% if pair_code %}<p>Gửi vào nhóm: <code>/lich {{pair_code}}</code></p><p class="note">Mã có hiệu lực 30 phút, chỉ dùng một lần. Tải lại trang sau khi gửi lệnh.</p>{% endif %}
 <p class="note">Sau khi nhóm đã hiện ở trên, chọn “Bật nhắc thứ Hai lúc 10:00”. Đổi nhóm sẽ tắt gửi tự động để bạn kiểm tra trước khi bật lại.</p></section>
+<section><h2>3. Nhớ tên nhân viên qua LINE</h2><p>Nhân viên chọn tên lần đầu khi đăng ký bằng LINE; những lần sau tự hiện đúng tên.</p><a href="/admin/line/identity">Thiết lập &amp; quản lý liên kết tên</a></section>
 <section><h2>Lịch sử gửi</h2>{% if recent %}<ul>{% for item in recent %}<li>{% if item.week_start.startswith('reminder-test:') %}Nhắc đăng ký · Gửi thử{% elif item.week_start.startswith('reminder:') %}Nhắc đăng ký · {{item.week_start[9:]}}{% elif item.week_start.startswith('published:') %}Lịch đã chốt · {{item.week_start.split(':')[1]}}{% else %}Gửi ảnh trước đây{% endif %}: {{'LINE đã nhận yêu cầu gửi' if item.accepted_at else 'Đang chờ gửi / thử lại'}}</li>{% endfor %}</ul>{% else %}<p>Chưa có lần gửi nào.</p>{% endif %}</section>
 </main></body></html>

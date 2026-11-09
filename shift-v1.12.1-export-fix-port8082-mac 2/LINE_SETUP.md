@@ -17,7 +17,33 @@ update. If LINE fails after confirmation, the UI explains that the shifts
 were confirmed but the message was not acknowledged, and allows retrying the
 same persisted payload. Uncertain requests older than 24 hours are not retried.
 
-## Configure weekly reminders
+## Employee name linking through LINE
+
+`/admin/line/identity` configures a LINE Login channel and LIFF app under the
+same provider as Messaging API (`2005791100`). Use the `openid` scope only;
+no profile or email scope is required. LIFF endpoint:
+`https://shift-schedule-1fk2.onrender.com/kibo/line`.
+The public policy is `/line/privacy`. Configure and publish the LINE Login
+channel before saving its public Channel ID and LIFF ID in the owner page.
+
+The LIFF entry page sends a raw ID token to the server over HTTPS. The server
+verifies it using LINE's `/oauth2/v2.1/verify` endpoint and checks issuer,
+audience, expiry and subject. Client-supplied profile objects are ignored.
+Tokens are not persisted or logged. The database retains LINE user ID,
+employee ID and link timestamp; unique constraints prevent duplicate claims.
+An employee explicitly selects their own name once. This is self-selection,
+not independent proof of employment. Managers can remove mistaken links
+without changing shifts or Kibo submissions. Employees can switch to another
+unclaimed active name after fresh LINE verification.
+
+When configured, registration reminder links open LIFF. New members of the
+paired group receive a welcome button through LINE's signed join event.
+Existing group members can open the LIFF registration link at any time.
+Verified employee sessions preselect the associated name, while normal web
+registration remains available without LINE. Provider IDs and channel IDs
+must not be mixed across unrelated providers.
+
+## Bot configuration
 
 The owner page `/admin/line` configures bot `@323txucc`. Delivery is disabled
 until the owner saves the channel credentials, pairs one group, and enables it.

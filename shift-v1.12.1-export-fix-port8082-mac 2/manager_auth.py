@@ -34,7 +34,8 @@ def install_manager_auth(app, connect):
     dummy_hash = generate_password_hash(secrets.token_urlsafe(32))
     public_endpoints = {'static', 'kibo', 'kibo_prefill', 'kibo_fixed', 'kibo_fixed_delete',
                         'manager_login', 'manager_setup', 'manager_activate', 'healthz',
-                        'line_webhook', 'line_schedule_image'}
+                        'line_webhook', 'line_schedule_image', 'line_kibo_entry',
+                        'line_identity_profile', 'line_identity_link', 'line_identity_privacy'}
 
     def csrf():
         if 'csrf' not in session:
@@ -78,7 +79,8 @@ def install_manager_auth(app, connect):
             return
         # Public Kibo does not use manager authority or manager sessions for writes.
         if request.endpoint in {'static','kibo','kibo_prefill','kibo_fixed','kibo_fixed_delete','healthz',
-                                'line_webhook','line_schedule_image'}:
+                                'line_webhook','line_schedule_image','line_kibo_entry',
+                                'line_identity_profile','line_identity_link','line_identity_privacy'}:
             return
         uid = session.get('manager_id')
         if uid:

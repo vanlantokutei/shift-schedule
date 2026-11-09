@@ -30,7 +30,7 @@ def scheduled_week(now):
     return now.date() if now.weekday() == 0 and now.hour >= 10 else None
 
 
-def registration_reminder(connection, current_week, now, test=False):
+def registration_reminder(connection, current_week, now, test=False, signup_url=None):
     """Match the employee Kibo week and its current deadline, including extensions."""
     target = current_week + timedelta(days=7)
     opens, deadline = kibo_window(connection, target)
@@ -43,7 +43,7 @@ def registration_reminder(connection, current_week, now, test=False):
         f'{target:%d/%m}–{target + timedelta(days=6):%d/%m/%Y}.\n'
         f'⏰ Hạn đăng ký: {deadline:%d/%m/%Y lúc %H:%M} (giờ Nhật).\n\n'
         f'📅 Đăng ký tại đây:\n'
-        f'https://shift-schedule-1fk2.onrender.com/kibo?week={target.isoformat()}\n\n'
+        f'{signup_url or "https://shift-schedule-1fk2.onrender.com/kibo?week=" + target.isoformat()}\n\n'
         'Cảm ơn mọi người!'
     )
 
@@ -191,7 +191,9 @@ class LineSchedule:
                           ('Nhóm nhận đã đổi. Lần gửi đang chờ của tuần này đã được dừng.',))
                 return 'group_changed'
             if not job:
-                text = registration_reminder(c, week, now, test=test)
+                identity = self.app.extensions.get('line_identity')
+                signup_url = identity['registration_url'](c, week + timedelta(days=7)) if identity else None
+                text = registration_reminder(c, week, now, test=test, signup_url=signup_url)
                 if text is None:
                     c.execute('UPDATE line_schedule_config SET last_error=%s WHERE id=1',
                               ('Đăng ký 希望シフト cho tuần tới chưa mở hoặc đã đóng. Chưa gửi nhắc.',))
@@ -397,7 +399,9 @@ def install_line_schedule(app, connect, start_worker=True):
             recent = c.execute('SELECT week_start,accepted_at FROM line_schedule_deliveries ORDER BY next_attempt DESC LIMIT 5').fetchall()
             now = datetime.now(JST)
             current_week = now.date() - timedelta(days=now.weekday())
-            reminder_preview = registration_reminder(c, current_week, now)
+            identity = app.extensions.get('line_identity')
+            signup_url = identity['registration_url'](c, current_week + timedelta(days=7)) if identity else None
+            reminder_preview = registration_reminder(c, current_week, now, signup_url=signup_url)
         return render_template('line_settings.html', config=config, notice=notice, recent=recent,
                                pair_code=session.get('line_pair_code') if config['pair_hash'] else None,
                                test_key=session.get('line_test_key', ''), reminder_preview=reminder_preview)
@@ -442,6 +446,22 @@ def install_line_schedule(app, connect, start_worker=True):
                 group_id = source.get('groupId') if source.get('type') == 'group' else None
                 if not group_id:
                     continue
+                if event.get('type') == 'memberJoined' and group_id == config['group_id'] and event.get('replyToken'):
+                    identity = app.extensions.get('line_identity')
+                    today = datetime.now(JST).date()
+                    week = today - timedelta(days=today.weekday()) + timedelta(days=7)
+                    signup_url = identity['registration_url'](c, week) if identity else None
+                    if signup_url:
+                        try:
+                            line_request(credentials['token'], '/message/reply', {
+                                'replyToken': event['replyToken'], 'messages': [{
+                                    'type': 'template', 'altText': 'Chào mừng bạn! Đăng ký kibo và xác nhận tên.',
+                                    'template': {'type': 'buttons', 'title': 'ベト屋築地店',
+                                                 'text': 'Chào bạn! Mở kibo và chọn tên của mình một lần. Lần sau hệ thống sẽ nhớ tên.',
+                                                 'actions': [{'type': 'uri', 'label': 'Đăng ký & chọn tên', 'uri': signup_url}]}}]})
+                        except RuntimeError:
+                            pass
+                    continue
                 if event.get('type') == 'leave' and group_id == config['group_id']:
                     c.execute('UPDATE line_schedule_config SET enabled=0,group_id=NULL,group_name=NULL WHERE id=1')
                 message = event.get('message') or {}
@@ -477,6 +497,8 @@ def install_line_schedule(app, connect, start_worker=True):
             abort(404)
         return Response(bytes(image['png']), mimetype='image/png')
 
+    from line_identity import install_line_identity
+    install_line_identity(app, connect)
     if start_worker and not os.environ.get('LINE_SCHEDULER_DISABLED'):
         threading.Thread(target=service.loop, name='line-weekly-schedule', daemon=True).start()
     return service
