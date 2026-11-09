@@ -393,6 +393,23 @@ def install_line_schedule(app, connect, start_worker=True):
                         'pending': 'Lần gửi thử đang chờ. Thử lại sau 5 phút.',
                         'group_changed': 'Nhóm nhận đã đổi. Tải lại trang để tạo lần thử mới.',
                     }.get(result, 'Gửi thử chưa thành công. Vui lòng thử lại sau 5 phút.')
+                elif action == 'design_check':
+                    now = datetime.now(JST)
+                    week = now.date() - timedelta(days=now.weekday())
+                    target = week + timedelta(days=7)
+                    identity = app.extensions.get('line_identity')
+                    signup_url = identity['registration_url'](c, target) if identity else None
+                    signup_url = signup_url or 'https://shift-schedule-1fk2.onrender.com/kibo?week=' + str(target)
+                    text = registration_reminder(c, week, now, signup_url=signup_url)
+                    if not config['credentials'] or text is None:
+                        notice = 'Cần kết nối bot và mở đăng ký tuần tới để kiểm tra thẻ.'
+                    else:
+                        try:
+                            line_request(service.credentials(config)['token'], '/message/validate/push',
+                                         {'messages': [reminder_card(text, signup_url, target, kibo_window(c, target)[1])]})
+                            notice = 'LINE xác nhận thẻ nhắc hợp lệ. Không gửi tin nhắn vào nhóm.'
+                        except RuntimeError as error:
+                            notice = str(error)
                 elif action == 'disable':
                     c.execute('UPDATE line_schedule_config SET enabled=0 WHERE id=1')
                     notice = 'Đã tắt nhắc đăng ký tự động.'
