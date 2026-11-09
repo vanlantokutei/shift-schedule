@@ -104,7 +104,7 @@ def test_only_owner_can_configure_or_unlink_and_reminder_uses_liff(linked_state)
     assert raw.execute('SELECT count(*) FROM shifts').fetchone()[0]==before
     from datetime import datetime
     service.tick(datetime(2026,11,16,10,tzinfo=identity.JST))
-    assert 'https://liff.line.me/2012000011-testapp?week=2026-11-23' in calls[-1][2]['messages'][0]['text']
+    assert 'https://liff.line.me/2012000011-testapp?week=2026-11-23' in calls[-1][2]['messages'][0]['altText']
 
 
 def test_feature_is_inactive_without_liff_config(state):
@@ -123,5 +123,5 @@ def test_joining_paired_group_gets_identity_button_only_after_setup(linked_state
     assert webhook(c,[event]).status_code==200
     assert calls[-1][1]=='/message/reply'
     message=calls[-1][2]['messages'][0]
-    assert message['type']=='template' and message['template']['actions'][0]['uri'].startswith('https://liff.line.me/')
+    assert message['type']=='flex' and message['contents']['footer']['contents'][0]['action']['uri'].startswith('https://liff.line.me/')
     assert raw.execute('SELECT count(*) FROM line_staff_links').fetchone()[0]==0

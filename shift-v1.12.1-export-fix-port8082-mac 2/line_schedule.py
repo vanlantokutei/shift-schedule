@@ -18,6 +18,7 @@ from cryptography.fernet import Fernet
 from flask import Response, abort, g, jsonify, render_template, request, session
 from PIL import Image, ImageDraw, ImageFont
 from kibo_deadlines import window as kibo_window
+from line_design import reminder_card, welcome_card
 
 JST = ZoneInfo('Asia/Tokyo')
 DELIVERY_LOCK = 72905439
@@ -199,7 +200,8 @@ class LineSchedule:
                               ('Đăng ký 希望シフト cho tuần tới chưa mở hoặc đã đóng. Chưa gửi nhắc.',))
                     return 'closed'
                 image_id = secrets.token_urlsafe(32)
-                payload = {'to': config['group_id'], 'messages': [{'type': 'text', 'text': text}]}
+                signup_url = signup_url or 'https://shift-schedule-1fk2.onrender.com/kibo?week=' + str(week + timedelta(days=7))
+                payload = {'to': config['group_id'], 'messages': [reminder_card(text, signup_url, week + timedelta(days=7), kibo_window(c, week + timedelta(days=7))[1])]}
                 c.execute('''INSERT INTO line_schedule_deliveries
                     (week_start,image_id,png,payload,retry_key,next_attempt,expires_at)
                     VALUES(%s,%s,%s,%s,%s,%s,%s)''',
@@ -444,6 +446,34 @@ def install_line_schedule(app, connect, start_worker=True):
                 if not isinstance(source, dict):
                     continue
                 group_id = source.get('groupId') if source.get('type') == 'group' else None
+                # Rich-menu action in a private chat. Only a linked, active employee
+                # can retrieve an already-published schedule; never expose drafts.
+                if source.get('type') == 'user' and event.get('type') == 'message' and event.get('replyToken'):
+                    message = event.get('message') or {}
+                    if isinstance(message, dict) and message.get('type') == 'text' and message.get('text') in ('Xem lịch', 'Liên hệ Tencho'):
+                        user_id = source.get('userId', '')
+                        linked = c.execute('SELECT s.id FROM line_staff_links l JOIN staff s ON s.id=l.staff_id '
+                                           'WHERE l.line_user_id=%s AND s.active=1', (user_id,)).fetchone()
+                        identity = app.extensions.get('line_identity')
+                        today = datetime.now(JST).date()
+                        week = today - timedelta(days=today.weekday()) + timedelta(days=7)
+                        signup_url = identity['registration_url'](c, week) if identity else None
+                        messages = [{'type': 'text', 'text': 'Tencho chưa gửi lịch đã chốt. Bạn xem lại trong nhóm nhân viên nhé.'}]
+                        if message.get('text') == 'Liên hệ Tencho':
+                            messages = [{'type': 'text', 'text': 'Bạn cần hỗ trợ hoặc đổi ca? Nhắn Tencho Lân trong nhóm nhân viên nhé.\n\nベト屋築地店\nĐiện thoại quán: 03-6264-1370\nĐịa chỉ: 東京都中央区築地3-11-6 1階\nhttps://betoya.jp/store/tsukiji/'}]
+                        elif not linked:
+                            messages = [welcome_card(signup_url)] if signup_url else [{'type': 'text', 'text': 'Vui lòng liên hệ Tencho để liên kết tên trước khi xem lịch.'}]
+                        else:
+                            latest = c.execute("SELECT payload FROM line_schedule_deliveries WHERE week_start LIKE 'published:%' "
+                                               'AND accepted_at IS NOT NULL AND expires_at>%s ORDER BY accepted_at DESC LIMIT 1',
+                                               (datetime.now(JST),)).fetchone()
+                            if latest:
+                                messages = json.loads(latest['payload'])['messages']
+                        try:
+                            line_request(credentials['token'], '/message/reply',
+                                         {'replyToken': event['replyToken'], 'messages': messages})
+                        except RuntimeError:
+                            pass
                 if not group_id:
                     continue
                 if event.get('type') == 'memberJoined' and group_id == config['group_id'] and event.get('replyToken'):
@@ -454,11 +484,7 @@ def install_line_schedule(app, connect, start_worker=True):
                     if signup_url:
                         try:
                             line_request(credentials['token'], '/message/reply', {
-                                'replyToken': event['replyToken'], 'messages': [{
-                                    'type': 'template', 'altText': 'Chào mừng bạn! Đăng ký kibo và xác nhận tên.',
-                                    'template': {'type': 'buttons', 'title': 'ベト屋築地店',
-                                                 'text': 'Chào bạn! Mở kibo và chọn tên của mình một lần. Lần sau hệ thống sẽ nhớ tên.',
-                                                 'actions': [{'type': 'uri', 'label': 'Đăng ký & chọn tên', 'uri': signup_url}]}}]})
+                                'replyToken': event['replyToken'], 'messages': [welcome_card(signup_url)]})
                         except RuntimeError:
                             pass
                     continue
