@@ -179,8 +179,11 @@ class LineSchedule:
     def tick(self, now=None):
         now = now or datetime.now(JST)
         week = scheduled_week(now)
-        if week:
-            return self.deliver(week, now, 'reminder:' + str(week))
+        result = self.deliver(week, now, 'reminder:' + str(week)) if week else None
+        private = self.app.extensions.get('line_private_reminders')
+        if private:
+            private.tick(now)
+        return result
 
     def deliver(self, week, now, delivery_key, test=False):
         with self.connect() as c:
@@ -470,6 +473,7 @@ def install_line_schedule(app, connect, start_worker=True):
                 source = event.get('source') or {}
                 if not isinstance(source, dict):
                     continue
+                app.extensions['line_private_reminders'].follow_event(c, event)
                 group_id = source.get('groupId') if source.get('type') == 'group' else None
                 # Rich-menu action in a private chat. Only a linked, active employee
                 # can retrieve an already-published schedule; never expose drafts.
@@ -550,6 +554,8 @@ def install_line_schedule(app, connect, start_worker=True):
 
     from line_identity import install_line_identity
     install_line_identity(app, connect)
+    from line_private_reminders import install_private_reminders
+    install_private_reminders(app, connect, service, lambda *args, **kwargs: line_request(*args, **kwargs))
     if start_worker and not os.environ.get('LINE_SCHEDULER_DISABLED'):
         threading.Thread(target=service.loop, name='line-weekly-schedule', daemon=True).start()
     return service

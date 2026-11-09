@@ -85,3 +85,12 @@ group. A bot leave event clears the paired group and disables reminders.
 
 Tests: `python -m pytest -q test_line_schedule.py test_manager_auth.py test_kibo_deadlines.py test_staff_archive.py`
 Tests mock LINE HTTP calls and use a local SQL adapter; they do not send messages.
+
+
+## Private reminders for missing Kibo
+
+Owner control: `/admin/line/private`. Requires both the master reminder switch and the private reminder switch. Each active employee is addressed using their verified `line_staff_links` association, never a display-name guess. They must add @323txucc as a friend to receive push notifications. Signed follow/unfollow events track known blocks. API acceptance is not proof of delivery.
+
+The 30-second worker checks the final four hours before the effective deadline in Asia/Tokyo, including extended windows crossing into another calendar week. Submitted records (including all days off) and legacy wish rows suppress reminders; fixed prefills do not count as submission. Each person/week has one durable job and a stable retry key. Retry every five minutes while still eligible and before close; never retry after 23 hours from the first attempt. Fresh eligibility is checked before sending. An attempted job is stopped if its recipient or deadline changes, because a timed-out call may already have delivered; it is never retargeted. An already accepted job is never sent again after extension.
+
+Tests use fake LINE HTTP; no live private messages are sent by the test suite.
