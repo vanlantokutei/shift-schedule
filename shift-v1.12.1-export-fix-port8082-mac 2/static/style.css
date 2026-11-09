@@ -130,3 +130,16 @@ body.schedule-compact{overflow:hidden}
 .store-info-label{margin:8px 0 12px;color:#66746d;font-size:13px}
 .store-info-dialog h2{margin:0;color:#10764e;font-size:26px;line-height:1.4}
 .store-info-name{margin:10px 0 4px;color:#53635b;font-size:15px}
+
+/* Contact and map links for the Tsukiji store. */
+.store-info-dialog{max-width:380px;max-height:calc(100dvh - 32px);overflow-y:auto}
+.store-info-details{margin:24px 0;text-align:left;font-size:14px;line-height:1.6}
+.store-info-details>div{padding:12px 0;border-top:1px solid #e5ece7}
+.store-info-details dt{color:#66746d;font-size:12px}
+.store-info-details dd{margin:4px 0 0;overflow-wrap:anywhere}
+.store-info-details dd small{display:block;color:#66746d;font-size:12px}
+.store-info-details a{color:#10764e;text-underline-offset:3px}
+.store-info-map{display:block;padding:13px 16px;border-radius:12px;background:#10764e;color:#fff;font-size:15px;font-weight:700;text-decoration:none}
+.store-info-map:hover{background:#086340}
+.store-info-website{display:inline-block;padding:12px 8px 0;color:#53635b;font-size:12px;text-underline-offset:3px}
+.store-info-dialog a:focus-visible,.store-info-close:focus-visible{outline:3px solid #58b98c;outline-offset:3px}
