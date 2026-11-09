@@ -1,0 +1,19 @@
+<dialog id="storeInfoDialog" class="store-info-dialog" aria-labelledby="storeInfoTitle">
+ <form method="dialog" class="store-info-close-form"><button type="submit" class="store-info-close" aria-label="Đóng">×</button></form>
+ <p class="store-info-label">Tên quán</p>
+ <h2 id="storeInfoTitle" lang="ja">ベト屋築地店</h2>
+ <p class="store-info-name">BETOYA Tsukiji</p>
+</dialog>
+<script>
+(()=>{
+ const dialog=document.getElementById('storeInfoDialog');
+ document.querySelectorAll('.store-info-trigger').forEach(button=>{
+  button.addEventListener('click',()=>{if(!dialog.open)dialog.showModal()});
+ });
+ dialog.addEventListener('click',event=>{
+  if(event.target!==dialog)return;
+  const rect=dialog.getBoundingClientRect();
+  if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dialog.close();
+ });
+})();
+</script>

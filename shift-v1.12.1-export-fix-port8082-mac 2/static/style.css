@@ -117,3 +117,16 @@ body.schedule-compact{overflow:hidden}
 .archived-staff-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid #e3e9e5}
 .archived-staff-item>div{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .archived-staff-item button{min-height:40px;padding:8px 14px}
+
+/* Store name opened by either the header logo or the phone overview logo. */
+.store-info-trigger{display:inline-flex;align-items:center;justify-content:center;flex:none;border:0;padding:2px;background:transparent;border-radius:50%;cursor:pointer;min-width:44px;min-height:44px}
+.store-info-trigger:focus-visible{outline:3px solid #58b98c;outline-offset:3px}
+.store-info-trigger:hover{background:#16805722}
+.store-info-dialog{width:calc(100vw - 32px);max-width:340px;margin:auto;padding:32px 24px;border:1px solid #dce7df;border-radius:20px;background:#fff;color:#202a29;text-align:center;box-shadow:0 18px 70px #10201c33}
+.store-info-dialog::backdrop{background:#10201c88}
+.store-info-close-form{position:absolute;right:8px;top:8px;margin:0}
+.store-info-close{width:40px;height:40px;border:0;border-radius:50%;background:transparent;color:#53635b;font-size:26px;cursor:pointer}
+.store-info-close:hover{background:#edf5ef}
+.store-info-label{margin:8px 0 12px;color:#66746d;font-size:13px}
+.store-info-dialog h2{margin:0;color:#10764e;font-size:26px;line-height:1.4}
+.store-info-name{margin:10px 0 4px;color:#53635b;font-size:15px}
