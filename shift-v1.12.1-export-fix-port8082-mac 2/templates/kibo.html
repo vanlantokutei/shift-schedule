@@ -29,8 +29,13 @@
  {% if error and not kibo_closed %}<div class="notice error">⚠ {{error}}</div>{% endif %}
  <form method="post" action="/kibo" class="week-form" id="kibo-form">
   <fieldset {% if kibo_closed %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
-  <input type="hidden" name="staff_id" value="{{selected_id}}"><input type="hidden" name="week" value="{{days[0]}}">
+  <input type="hidden" name="staff_id" value="{{selected_id}}"><input type="hidden" name="week" value="{{days[0]}}"><input type="hidden" name="week_off" value="0">
   <div class="week-title"><strong>{% for s in staff %}{% if s.id==selected_id %}{{s.name}}{% endif %}{% endfor %}</strong> • {{days[0].strftime('%d/%m')}} – {{days[-1].strftime('%d/%m/%Y')}}</div>
+  <div class="week-off-tools">
+   {% if week_off_registered %}<p class="week-off-status" role="status">✓ Đã báo nghỉ cả tuần. Nếu thay đổi, bạn có thể chọn ca và gửi lại trước hạn.</p>{% endif %}
+   <button type="button" id="week-off-button" class="week-off-button" {% if has_locked_shifts or week_off_registered %}disabled{% endif %}>{{'✓ Đã báo nghỉ cả tuần' if week_off_registered else 'Tuần này nghỉ'}}</button>
+   <p>{{'Tuần này đã có ca quản lý chốt. Muốn nghỉ hoặc đổi ca, vui lòng liên hệ quản lý.' if has_locked_shifts else 'Không đăng ký ca nào trong tuần này. Cần xác nhận trước khi gửi.'}}</p>
+  </div>
   <div class="fixed-shift-tools">
    <button type="button" onclick="fillKibo('previous')">↩️ Dùng lịch tuần trước</button>
    <button type="button" class="fixed-save" onclick="saveFixedKibo()">📌 Đăng ký làm lịch cố định</button>
@@ -49,7 +54,7 @@
  {% endif %}
 </main>
 {% if message %}<div id="kibo-success" class="kibo-confirm success-overlay" role="dialog" aria-modal="true" aria-labelledby="success-title"><div class="confirm-card success-card"><div class="success-bow" aria-hidden="true"><span class="bow-person">🙇</span><span class="bow-sparkle">✨</span></div><div class="success-icon" aria-hidden="true">✓</div><h2 id="success-title">Đăng ký thành công!</h2><p class="success-message">{{message}}</p><button type="button" class="success-close" onclick="document.getElementById('kibo-success').remove()">Đóng</button></div></div>{% endif %}
-<div id="kibo-confirm" class="kibo-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><div class="confirm-card"><h2 id="confirm-title">Xác nhận lịch đăng ký</h2><p>Bạn vui lòng kiểm tra lại lịch làm mong muốn bên dưới nhé! Nếu cần thay đổi, hãy chọn「Sửa lại」. Nếu mọi thông tin đã chính xác, hãy chọn「Xác nhận gửi」.</p><div id="confirm-summary"></div><div class="confirm-actions"><button type="button" id="confirm-edit">✏️ Sửa lại</button><button type="button" id="confirm-send">✓ Xác nhận gửi</button></div></div></div>
+<div id="kibo-confirm" class="kibo-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><div class="confirm-card"><h2 id="confirm-title">Xác nhận lịch đăng ký</h2><p id="confirm-description">Bạn vui lòng kiểm tra lại lịch làm mong muốn bên dưới nhé! Nếu cần thay đổi, hãy chọn「Sửa lại」. Nếu mọi thông tin đã chính xác, hãy chọn「Xác nhận gửi」.</p><div id="confirm-summary"></div><div class="confirm-actions"><button type="button" id="confirm-edit">✏️ Sửa lại</button><button type="button" id="confirm-send">✓ Xác nhận gửi</button></div></div></div>
 <script>
 (function(){
  const el=document.getElementById('kibo-timer');
@@ -78,13 +83,16 @@ if(kiboForm)kiboForm.addEventListener('submit',event=>{
  event.preventDefault();
  const lines=[];
  let invalid=false;
+ const weekOff=kiboForm.elements.week_off.value==='1';
+ document.getElementById('confirm-title').textContent=weekOff?'Xác nhận nghỉ cả tuần':'Xác nhận lịch đăng ký';
+ document.getElementById('confirm-description').textContent=weekOff?'Bạn xác nhận không đăng ký ca nào trong tuần này? Lịch mong muốn đã gửi của tuần này sẽ được bỏ, lịch cố định cho các tuần sau vẫn được giữ.':'Bạn vui lòng kiểm tra lại lịch làm mong muốn bên dưới. Chọn Sửa lại nếu cần thay đổi, hoặc Xác nhận gửi để hoàn tất.';
  for(let i=0;i<7;i++){
   const a=kiboForm.elements['start_'+i],b=kiboForm.elements['end_'+i];
   if(!a||!b)continue;
-  const start=a.value,end=b.value;
+  const start=weekOff?'':a.value,end=weekOff?'':b.value;
   if(Boolean(start)!==Boolean(end)||(start&&end<=start)){invalid=true;break}
   const day=a.closest('.day-card').querySelector('.day-name').textContent.trim().replace(/\s+/g,' ');
-  lines.push(day+' — '+(start?start+'–'+end:'Không đăng ký'));
+  lines.push(day+' — '+(start?start+'–'+end:(weekOff?'Nghỉ — không đăng ký ca':'Không đăng ký')));
  }
  if(invalid){alert('Vui lòng nhập đủ giờ bắt đầu và kết thúc; giờ kết thúc phải sau giờ bắt đầu.');return}
  const summary=document.getElementById('confirm-summary');
@@ -94,7 +102,9 @@ if(kiboForm)kiboForm.addEventListener('submit',event=>{
  confirmBox.classList.remove('hidden');
  document.getElementById('confirm-edit').focus();
 });
-document.getElementById('confirm-edit').onclick=()=>{confirmBox.classList.add('hidden')};
+document.getElementById('confirm-edit').onclick=()=>{confirmBox.classList.add('hidden');if(kiboForm)kiboForm.elements.week_off.value='0'};
+const weekOffButton=document.getElementById('week-off-button');
+if(weekOffButton)weekOffButton.onclick=()=>{kiboForm.elements.week_off.value='1';kiboForm.requestSubmit()};
 document.getElementById('confirm-send').onclick=()=>{
  if(confirmed)return;
  confirmed=true;
@@ -148,6 +158,7 @@ async function shareKibo(){
 }
 </script>
 <style>
+.week-off-tools{padding:12px;border:1px solid #d9e1dc;border-radius:12px;background:#f7faf8;margin:12px 0}.week-off-button{display:block;width:100%;padding:12px;border:1px solid #10764e;border-radius:10px;background:white;color:#10764e;font:inherit;font-weight:750;cursor:pointer}.week-off-button:disabled{opacity:.55;cursor:default}.week-off-tools p{font-size:13px;line-height:1.5;margin:8px 0 0;color:#52645a}.week-off-tools .week-off-status{color:#10764e;margin:0 0 10px;font-weight:700}
 .fixed-shift-tools{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:12px 0}.fixed-shift-tools button{border:1px solid #d9e1dc;background:#fff;color:#176a45;border-radius:11px;padding:11px 8px;font-weight:750;cursor:pointer}.fixed-shift-tools .fixed-save{background:#e9f7ed}.fixed-shift-tools .fixed-cancel{grid-column:1/-1;color:#8b3a3a;border-color:#ead4d4}.fixed-shift-note{font-size:12px;line-height:1.5;color:#52645a;background:#f7faf8;border-radius:10px;padding:9px 11px;margin:-3px 0 12px}@media(max-width:430px){.fixed-shift-tools{grid-template-columns:1fr}.fixed-shift-tools .fixed-cancel{grid-column:auto}}
 .share-btn{display:block;width:100%;max-width:520px;margin:0 auto 16px;padding:13px 16px;border:0;border-radius:12px;font-weight:700;font-size:16px;cursor:pointer}
 .kibo-confirm.hidden{display:none}.kibo-confirm{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:15px}.confirm-card{background:white;color:#222;border-radius:15px;padding:20px;width:min(100%,480px);max-height:85vh;overflow:auto;box-shadow:0 8px 35px #0003}.confirm-card h2{margin:0 0 10px}.confirm-card p{line-height:1.5}.confirm-card #confirm-summary{background:#f5f7fb;border-radius:9px;padding:12px;line-height:1.8}.confirm-card #confirm-summary div{border-bottom:1px solid #e5e7eb}.confirm-actions{display:flex;gap:10px;margin-top:16px}.confirm-actions button{flex:1;padding:13px 7px;border:0;border-radius:9px;font-weight:700;cursor:pointer}.confirm-actions #confirm-send{background:#526d82;color:white}

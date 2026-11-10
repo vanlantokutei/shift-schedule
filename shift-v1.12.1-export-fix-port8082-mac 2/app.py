@@ -74,6 +74,8 @@ def index():
  legacy_kibo=c.execute('select distinct staff_id from shifts where work_date between %s and %s and is_kibo=1',(str(kibo_week),str(kibo_end))).fetchall()
  kibo_open,kibo_deadline=kibo_window(c,kibo_week)
  kibo_now=datetime.now(ZoneInfo('Asia/Tokyo'))
+ week_work=c.execute('select distinct staff_id from shifts where work_date between %s and %s and start IS NOT NULL and "end" IS NOT NULL',(str(kibo_week),str(kibo_end))).fetchall()
+ week_off_ids={r['staff_id'] for r in kibo_rows}-{r['staff_id'] for r in week_work}
  c.close();kibo_status={r['staff_id']:r['submitted_at_jst'] for r in kibo_rows}
  sm={(r['staff_id'],r['work_date']):r for r in rows}
  totals={s['id']:sum(hours(sm.get((s['id'],str(d)))) for d in days) for s in staff}
@@ -82,7 +84,7 @@ def index():
  baito_monthly_pay=sum(round(monthly_totals[s['id']]*(s['hourly_rate'] or 0)) for s in staff if s['staff_type']=='baito')
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
- return render_template('index.html',**holiday_context(days),staff=staff,active_staff=active_staff,archived_staff=archived_staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,kibo_deadline=kibo_deadline,kibo_closed=not(kibo_open<=kibo_now<kibo_deadline),kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+ return render_template('index.html',**holiday_context(days),staff=staff,active_staff=active_staff,archived_staff=archived_staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,week_off_ids=week_off_ids,kibo_deadline=kibo_deadline,kibo_closed=not(kibo_open<=kibo_now<kibo_deadline),kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
 def suggest_draft_breaks(draft,existing):
  """Preview-only breaks, staggered in 15-minute increments."""
  def mins(t):return int(t[:2])*60+int(t[3:])
@@ -257,6 +259,7 @@ def kibo():
  c=db();kibo_db_connect_ms=(perf_counter()-kibo_t0)*1000
  staff=c.execute('select id,name from staff where active=1 order by sort_order,id').fetchall()
  message=None; error=None; submitted=0; locked=0
+ week_off=request.method=='POST' and request.form.get('week_off')=='1'
  raw_week=request.values.get('week')
  try:m=monday(raw_week) if raw_week else monday()+timedelta(days=7)
  except Exception:m=monday()+timedelta(days=7)
@@ -280,7 +283,7 @@ def kibo():
   entries=[]
   for i,d in enumerate(days):
    if error:break
-   start=(request.form.get(f'start_{i}') or '').strip();end=(request.form.get(f'end_{i}') or '').strip()
+   start='' if week_off else (request.form.get(f'start_{i}') or '').strip();end='' if week_off else (request.form.get(f'end_{i}') or '').strip()
    if bool(start)!=bool(end):error=f'{d.strftime("%d/%m")}: cần nhập đủ giờ bắt đầu và kết thúc';break
    if start and end:
     try:
@@ -292,6 +295,8 @@ def kibo():
    try:
     # Fetch the whole week once instead of making seven round trips to PostgreSQL.
     locked_dates={r['work_date'] for r in c.execute('select work_date from shifts where staff_id=%s and work_date between %s and %s and is_kibo=0',(selected_id,str(days[0]),str(days[-1]))).fetchall()}
+    if week_off and locked_dates:
+     raise ValueError('WEEK_OFF_LOCKED')
     for work_date,start,end in entries:
      if work_date in locked_dates:
       locked+=1;continue
@@ -300,20 +305,28 @@ def kibo():
      else:c.execute('delete from shifts where staff_id=%s and work_date=%s and is_kibo=1',(selected_id,work_date))
     c.execute('''insert into kibo_submissions(staff_id,week_start,submitted_at) values(%s,%s,CURRENT_TIMESTAMP) on conflict(staff_id,week_start) do update set submitted_at=CURRENT_TIMESTAMP''',(selected_id,str(days[0])))
     c.commit();app.logger.info('KIBO_SAVE_METRICS db_connect_ms=%.0f save_ms=%.0f',kibo_db_connect_ms,(perf_counter()-kibo_save_t0)*1000);message=f'Cảm ơn {next((s["name"] for s in staff if s["id"]==selected_id), "bạn")} đã đăng ký lịch làm! 🌸 Chúng tôi đã ghi nhận lịch mong muốn của bạn. Lịch làm chính thức sẽ được thông báo sau khi quản lý sắp xếp và chốt lịch nhé! Đã ghi nhận {submitted} ca 希望 cho tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}.'
+    if week_off:
+     message=f'Đã ghi nhận {next((s["name"] for s in staff if s["id"]==selected_id), "bạn")} nghỉ cả tuần {days[0].strftime("%d/%m")}–{days[-1].strftime("%d/%m/%Y")}. Bạn không đăng ký ca nào trong tuần này và đã được tính là trả lời đăng ký lịch. Bot sẽ không nhắc riêng bạn gửi lịch tuần này nữa.'
     if locked:message+=f' Có {locked} ngày quản lý đã chốt nên không bị ghi đè.'
 
+   except ValueError as problem:
+    c.rollback()
+    error='Tuần này đã có ca quản lý chốt. Vui lòng liên hệ quản lý để xin nghỉ hoặc đổi ca.' if str(problem)=='WEEK_OFF_LOCKED' else 'Không lưu được lịch. Vui lòng thử lại.'
    except Exception:
     app.logger.exception('KIBO_SAVE_FAILED db_connect_ms=%.0f elapsed_ms=%.0f',kibo_db_connect_ms,(perf_counter()-kibo_save_t0)*1000)
     c.rollback();error='Không lưu được 希望シフト. Vui lòng thử lại.'
  rows=c.execute('select work_date,start,"end",is_kibo from shifts where staff_id=%s and work_date between %s and %s',(selected_id,str(days[0]),str(days[-1]))).fetchall() if selected_id else []
  fixed_rows=c.execute('select weekday,start,"end" from fixed_kibo where staff_id=%s order by weekday',(selected_id,)).fetchall() if selected_id else []
+ answered=bool(selected_id and c.execute('select staff_id from kibo_submissions where staff_id=%s and week_start=%s',(selected_id,str(m))).fetchone())
+ week_off_registered=answered and not rows
+ has_locked_shifts=any(not r['is_kibo'] for r in rows)
  c.close();existing={r['work_date']:r for r in rows}
  # Fixed shifts only prefill empty/unlocked days. They are never submitted automatically.
- for fr in fixed_rows:
+ for fr in ([] if answered else fixed_rows):
   d=days[fr['weekday']]; key=str(d)
   if key not in existing:existing[key]={'work_date':key,'start':fr['start'],'end':fr['end'],'is_kibo':1,'prefill_fixed':True}
  if request.method=='POST':app.logger.info('KIBO_REQUEST_METRICS total_ms=%.0f db_connect_ms=%.0f',(perf_counter()-kibo_t0)*1000,kibo_db_connect_ms)
- return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error,kibo_closed=kibo_closed,kibo_before_open=kibo_before_open,open_text=open_text,deadline_text=deadline_text,kibo_open_iso=kibo_open.isoformat(),kibo_deadline_iso=kibo_deadline.isoformat())
+ return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error,week_off_registered=week_off_registered,has_locked_shifts=has_locked_shifts,kibo_closed=kibo_closed,kibo_before_open=kibo_before_open,open_text=open_text,deadline_text=deadline_text,kibo_open_iso=kibo_open.isoformat(),kibo_deadline_iso=kibo_deadline.isoformat())
 @app.post('/staff')
 def staff_action():
  x=request.get_json() or {};c=db();a=x.get('action')
