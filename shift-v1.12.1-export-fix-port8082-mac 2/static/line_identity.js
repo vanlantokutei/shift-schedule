@@ -6,7 +6,8 @@
   const select=document.getElementById('lineIdentityName'), save=document.getElementById('lineIdentitySave');
   const continueButton=document.getElementById('lineIdentityContinue');
   let token=null, current=null;
-  const next=staff => '/kibo?'+new URLSearchParams({staff_id:String(staff.id),week:root.dataset.week});
+  let schedule=false, mine=false;
+  const next=staff => schedule ? '/staff/schedule'+(mine?'?mine=1':'') : '/kibo?'+new URLSearchParams({staff_id:String(staff.id),week:root.dataset.week});
   async function api(path,extra={}) {
     const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id_token:token,...extra})});
@@ -30,10 +31,13 @@
   (async()=>{
     try{
       await liff.init({liffId:root.dataset.liffId});
+      const params=new URL(location.href).searchParams;
+      schedule=params.get('view')==='schedule'; mine=params.get('mine')==='1';
+      if(schedule){document.querySelector('h1').textContent='Xem lịch làm việc';save.textContent='Xác nhận tên & xem lịch';continueButton.textContent='Mở lịch làm việc';}
       if(!liff.isLoggedIn()){
         status.textContent='Đăng nhập LINE để nhớ tên của bạn.';
         const login=document.createElement('button');login.type='button';login.textContent='Đăng nhập bằng LINE';
-        login.onclick=()=>liff.login({redirectUri:location.origin+'/kibo/line?'+new URLSearchParams({week:root.dataset.week})});
+        login.onclick=()=>liff.login({redirectUri:location.origin+'/kibo/line?'+new URLSearchParams({week:root.dataset.week,...(schedule?{view:'schedule',mine:mine?'1':'0'}:{})})});
         root.prepend(login);return;
       }
       token=liff.getIDToken();

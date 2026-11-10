@@ -199,6 +199,9 @@ def install_line_identity(app, connect):
                 JOIN staff s ON s.id=l.staff_id ORDER BY s.sort_order,s.id''').fetchall()
         return render_template('line_identity_settings.html', settings=settings, links=links, notice=notice)
 
+    from staff_schedule import install_staff_schedule
+    install_staff_schedule(app, connect, linked_staff)
+
     @app.get('/line/privacy')
     def line_identity_privacy():
         return render_template('line_identity_privacy.html')

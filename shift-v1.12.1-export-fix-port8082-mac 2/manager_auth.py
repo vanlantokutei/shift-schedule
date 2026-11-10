@@ -35,7 +35,8 @@ def install_manager_auth(app, connect):
     public_endpoints = {'static', 'kibo', 'kibo_prefill', 'kibo_fixed', 'kibo_fixed_delete',
                         'manager_login', 'manager_setup', 'manager_activate', 'healthz',
                         'line_webhook', 'line_schedule_image', 'line_kibo_entry',
-                        'line_identity_profile', 'line_identity_link', 'line_identity_privacy'}
+                        'line_identity_profile', 'line_identity_link', 'line_identity_privacy',
+                        'staff_schedule', 'staff_schedule_image'}
 
     def csrf():
         if 'csrf' not in session:

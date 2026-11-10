@@ -314,7 +314,6 @@ def test_rich_menu_only_returns_published_schedule_to_active_linked_staff(state)
     app,raw,_,calls,env=state
     owner=setup(env);token=csrf(owner,'/admin/line')
     assert publication_post(owner,publication_preview(owner),token).status_code==200
-    expected=calls[-1][2]['messages']
     uid='U'+'a'*32
     event={'type':'message','replyToken':'reply','source':{'type':'user','userId':uid},
            'message':{'type':'text','text':'Xem lịch'}}
@@ -325,7 +324,10 @@ def test_rich_menu_only_returns_published_schedule_to_active_linked_staff(state)
     assert 'liên kết tên' in calls[-1][2]['messages'][0]['text']
     raw.execute('INSERT INTO line_staff_links VALUES(?,?,?)',(uid,1,datetime.now(line.JST).isoformat()));raw.commit()
     assert webhook(client,[event]).status_code==200
-    assert calls[-1][1]=='/message/reply' and calls[-1][2]['messages']==expected
+    assert calls[-1][1]=='/message/reply'
+    actions=calls[-1][2]['messages'][0]['template']['actions']
+    assert actions[0]['uri'].endswith('/staff/schedule')
+    assert actions[1]['uri'].endswith('/staff/schedule?mine=1')
     raw.execute('UPDATE staff SET active=0 WHERE id=1');raw.commit()
     webhook(client,[event])
     assert calls[-1][2]['messages'][0]['type']=='text'

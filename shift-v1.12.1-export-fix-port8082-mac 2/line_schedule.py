@@ -183,6 +183,10 @@ class LineSchedule:
                 accepted_at TIMESTAMPTZ, next_attempt TIMESTAMPTZ NOT NULL,
                 expires_at TIMESTAMPTZ NOT NULL)''')
 
+            c.execute("""CREATE TABLE IF NOT EXISTS staff_schedule_publications (
+                publication_key TEXT PRIMARY KEY, week_start TEXT NOT NULL,
+                content TEXT NOT NULL, published_at TIMESTAMPTZ)""")
+
     def config(self, c, lock=False):
         return c.execute('SELECT * FROM line_schedule_config WHERE id=1' + (' FOR UPDATE' if lock else '')).fetchone()
 
@@ -298,6 +302,11 @@ class LineSchedule:
                     VALUES(%s,%s,%s,%s,%s,%s,%s)''',
                     (key, image_id, schedule_image(week, people, rows), json.dumps(payload),
                      str(uuid.uuid4()), now, now + timedelta(days=7)))
+            content = {'people': [{'id': p['id'], 'name': p['name']} for p in people],
+                       'shifts': [{k: v for k, v in r.items() if k != 'is_kibo'} for r in rows]}
+            c.execute("""INSERT INTO staff_schedule_publications(publication_key,week_start,content)
+                VALUES(%s,%s,%s) ON CONFLICT(publication_key) DO NOTHING""",
+                (key, str(week), json.dumps(content, ensure_ascii=False)))
             c.execute('''UPDATE shifts SET is_kibo=0 WHERE work_date BETWEEN %s AND %s
                 AND start IS NOT NULL AND "end" IS NOT NULL''',
                 (str(week), str(week + timedelta(days=6))))
@@ -311,6 +320,7 @@ class LineSchedule:
                 return {'ok': False, 'confirmed': True,
                         'error': 'Đã chốt ca nhưng LINE chưa xác nhận gửi. Bấm gửi lại để thử lại cùng phiên bản.'}, 502
             c.execute('UPDATE line_schedule_deliveries SET accepted_at=%s WHERE week_start=%s', (now, key))
+            c.execute('UPDATE staff_schedule_publications SET published_at=%s WHERE publication_key=%s', (now, key))
             return {'ok': True, 'duplicate': False,
                     'message': 'Đã chốt lịch. LINE đã tiếp nhận ảnh gửi vào nhóm ' + config['group_name'] + '.'}, 200
 
@@ -506,11 +516,11 @@ def install_line_schedule(app, connect, start_worker=True):
                         elif not linked:
                             messages = [welcome_card(signup_url)] if signup_url else [{'type': 'text', 'text': 'Vui lòng liên hệ Tencho để liên kết tên trước khi xem lịch.'}]
                         else:
-                            latest = c.execute("SELECT payload FROM line_schedule_deliveries WHERE week_start LIKE 'published:%' "
-                                               'AND accepted_at IS NOT NULL AND expires_at>%s ORDER BY accepted_at DESC LIMIT 1',
-                                               (datetime.now(JST),)).fetchone()
-                            if latest:
-                                messages = json.loads(latest['payload'])['messages']
+                            url = signup_url.split('?')[0] + '?view=schedule' if signup_url else config['public_origin'] + '/staff/schedule'
+                            messages = [{'type': 'template', 'altText': 'Xem lịch đã chốt của quán và lịch của bạn',
+                                'template': {'type': 'buttons', 'text': 'Chọn lịch muốn xem. Bấm tên trong bảng để mở lịch riêng.',
+                                    'actions': [{'type': 'uri', 'label': 'Lịch cả quán', 'uri': url},
+                                                {'type': 'uri', 'label': 'Lịch của tôi', 'uri': url + ('&' if '?' in url else '?') + 'mine=1'}]}}]
                         try:
                             line_request(credentials['token'], '/message/reply',
                                          {'replyToken': event['replyToken'], 'messages': messages})
