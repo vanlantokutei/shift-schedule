@@ -91,7 +91,7 @@ if(kiboForm)kiboForm.addEventListener('submit',event=>{
   if(!a||!b)continue;
   const start=weekOff?'':a.value,end=weekOff?'':b.value;
   if(Boolean(start)!==Boolean(end)||(start&&end<=start)){invalid=true;break}
-  const day=a.closest('.day-card').querySelector('.day-name').textContent.trim().replace(/\s+/g,' ');
+  const day=[...a.closest('.day-card').querySelector('.day-name').children].map(el=>el.textContent.trim()).join(' · ');
   lines.push(day+' — '+(start?start+'–'+end:(weekOff?'Nghỉ — không đăng ký ca':'Không đăng ký')));
  }
  if(invalid){alert('Vui lòng nhập đủ giờ bắt đầu và kết thúc; giờ kết thúc phải sau giờ bắt đầu.');return}
