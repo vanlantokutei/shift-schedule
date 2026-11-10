@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 import time
 from test_line_schedule import state
 from test_line_identity import linked_state, post, UID1
-from test_manager_auth import env
+from test_manager_auth import env, setup, csrf
 import line_schedule as line
 
 
@@ -85,3 +85,43 @@ def test_legacy_image_fallback_does_not_invent_personal_schedule(linked_state):
     image=get(c,'/staff/schedule-image?week=2026-11-16')
     assert image.status_code==200 and image.data.startswith(b'\x89PNG')
     assert get(c,'/staff/schedule').status_code==200
+
+
+def sync(owner):
+    import re
+    page=get(owner,'/admin/line/schedule-sync?week=2026-11-16')
+    version=re.search(rb'name="version" value="([^"]+)"',page.data).group(1).decode()
+    token=csrf(owner,'/admin/line/schedule-sync?week=2026-11-16')
+    return owner.post('/admin/line/schedule-sync?week=2026-11-16',data={'version':version,'csrf_token':token},base_url='https://localhost')
+
+
+def test_sync_only_approved_shifts_keeps_wishes_and_never_sends_messages(linked_state):
+    app,raw,service,calls,manager_env=linked_state
+    owner=setup(manager_env);employee=link(app)
+    before=[tuple(r) for r in raw.execute('SELECT * FROM shifts').fetchall()]
+    response=sync(owner)
+    assert response.status_code==200 and 'Đã đồng bộ 1 ca'.encode() in response.data
+    page=get(employee).data.decode()
+    assert '07:30–19:30' in page and '17:00–22:00' not in page and '99999' not in page
+    assert 'được quản lý đồng bộ' in page
+    assert [tuple(r) for r in raw.execute('SELECT * FROM shifts').fetchall()]==before
+    assert not calls
+    assert sync(owner).status_code==200
+    assert raw.execute('SELECT COUNT(*) FROM staff_schedule_publications').fetchone()[0]==1
+
+
+def test_sync_requires_owner_csrf_and_rejects_stale_preview(linked_state):
+    app,raw,service,calls,manager_env=linked_state
+    employee=link(app)
+    assert get(employee,'/admin/line/schedule-sync').status_code==302
+    owner=setup(manager_env)
+    assert owner.post('/admin/line/schedule-sync',base_url='https://localhost').status_code==403
+    import re
+    page=get(owner,'/admin/line/schedule-sync?week=2026-11-16')
+    version=re.search(rb'name="version" value="([^"]+)"',page.data).group(1).decode()
+    token=csrf(owner,'/admin/line/schedule-sync?week=2026-11-16')
+    raw.execute("UPDATE shifts SET start='08:00' WHERE staff_id=1");raw.commit()
+    response=owner.post('/admin/line/schedule-sync?week=2026-11-16',data={'version':version,'csrf_token':token},base_url='https://localhost')
+    assert response.status_code==409 and raw.execute('SELECT COUNT(*) FROM staff_schedule_publications').fetchone()[0]==0
+    raw.execute("UPDATE manager_accounts SET role='manager'");raw.commit()
+    assert get(owner,'/admin/line/schedule-sync').status_code==403

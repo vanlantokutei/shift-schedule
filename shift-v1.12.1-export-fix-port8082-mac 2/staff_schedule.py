@@ -1,5 +1,7 @@
-"""Employee schedule viewer; reads immutable, accepted publications only."""
+"""Employee schedule viewer; reads immutable publications approved by managers."""
 from datetime import datetime, timedelta
+import hashlib
+import hmac
 import json
 import time
 from urllib.parse import urlencode
@@ -37,6 +39,52 @@ def install_staff_schedule(app, connect, linked_staff):
             AND accepted_at IS NOT NULL ORDER BY accepted_at DESC,week_start DESC LIMIT 1''',
             ('published:' + str(week) + ':%',)).fetchone()
 
+    def sync_snapshot(c, week):
+        rows = c.execute('''SELECT staff_id,work_date,start,"end",break_start,break_end,
+            break2_start,break2_end,is_kibo FROM shifts WHERE work_date BETWEEN %s AND %s
+            AND start IS NOT NULL AND "end" IS NOT NULL ORDER BY staff_id,work_date''',
+            (str(week), str(week + timedelta(days=6)))).fetchall()
+        approved = [r for r in rows if not r['is_kibo']]
+        ids = {r['staff_id'] for r in approved}
+        staff = c.execute('SELECT id,name,active FROM staff ORDER BY sort_order,id').fetchall()
+        content = {'source': 'manager-import', 'people': [{'id': p['id'], 'name': p['name']}
+                   for p in staff if p['active'] or p['id'] in ids],
+                   'shifts': [{k: v for k, v in r.items() if k != 'is_kibo'} for r in approved]}
+        version = hashlib.sha256(json.dumps({'week': str(week), 'content': content},
+            sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        return content, len(rows)-len(approved), version
+
+    @app.route('/admin/line/schedule-sync', methods=['GET', 'POST'])
+    def staff_schedule_sync():
+        if not g.manager or g.manager['role'] != 'owner':
+            abort(403)
+        week = selected_week()
+        notice = None
+        status = 200
+        with connect() as c:
+            if request.method == 'POST':
+                c.execute('LOCK TABLE staff IN SHARE MODE')
+                c.execute('LOCK TABLE shifts IN SHARE MODE')
+            content, wishes, version = sync_snapshot(c, week)
+            if request.method == 'POST':
+                expected = request.form.get('version', '')
+                if not expected.isascii() or not hmac.compare_digest(expected, version):
+                    notice, status = 'Lịch vừa thay đổi. Kiểm tra bản xem trước rồi bấm đồng bộ lại.', 409
+                elif not content['shifts']:
+                    notice, status = 'Tuần này chưa có ca đã xếp để đồng bộ.', 400
+                else:
+                    key = 'imported:' + str(week) + ':' + version
+                    exists = c.execute('SELECT publication_key FROM staff_schedule_publications WHERE publication_key=%s', (key,)).fetchone()
+                    if exists:
+                        notice = 'Bản lịch này đã được đồng bộ. Không tạo bản trùng.'
+                    else:
+                        c.execute('''INSERT INTO staff_schedule_publications
+                            (publication_key,week_start,content,published_at) VALUES(%s,%s,%s,%s)''',
+                            (key, str(week), json.dumps(content, ensure_ascii=False), datetime.now(ZoneInfo('Asia/Tokyo'))))
+                        notice = f"Đã đồng bộ {len(content['shifts'])} ca vào trang Xem lịch. Không gửi tin vào nhóm."
+        return render_template('staff_schedule_sync.html', week=week, content=content,
+            wishes=wishes, version=version, notice=notice), status
+
     @app.get('/staff/schedule')
     def staff_schedule():
         week = selected_week()
@@ -71,6 +119,7 @@ def install_staff_schedule(app, connect, linked_staff):
         cells = {(r['staff_id'], str(r['work_date'])): r for r in content['shifts']}
         return render_template('staff_schedule.html', week=week, days=days, people=people,
             selected=selected, me=me, cells=cells, saved=bool(saved), old=bool(old),
+            imported=content.get('source') == 'manager-import',
             previous=week-timedelta(days=7), following=week+timedelta(days=7),
             labels=['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật'])
 
