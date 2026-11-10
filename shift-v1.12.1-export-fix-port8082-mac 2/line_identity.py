@@ -43,6 +43,9 @@ def install_line_identity(app, connect):
             line_user_id TEXT PRIMARY KEY, staff_id INTEGER NOT NULL UNIQUE,
             linked_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS line_manager_menu_links (
+            line_user_id TEXT PRIMARY KEY, staff_id INTEGER NOT NULL, granted_by INTEGER NOT NULL)''')
+
     def config(c):
         return c.execute('SELECT channel_id,liff_id FROM line_identity_config WHERE id=1').fetchone()
 
@@ -52,7 +55,15 @@ def install_line_identity(app, connect):
             return 'https://liff.line.me/' + settings['liff_id'] + '?week=' + str(week)
         return None
 
-    app.extensions['line_identity'] = {'registration_url': registration_url}
+    def manager_menu_allowed(c, uid):
+        if not uid:
+            return False
+        return bool(c.execute('''SELECT s.id FROM line_manager_menu_links m
+            JOIN line_staff_links l ON l.line_user_id=m.line_user_id AND l.staff_id=m.staff_id
+            JOIN staff s ON s.id=m.staff_id WHERE m.line_user_id=%s AND s.active=1''', (uid,)).fetchone())
+
+    app.extensions['line_identity'] = {'registration_url': registration_url,
+                                       'manager_menu_allowed': manager_menu_allowed}
 
     def requested_week():
         today = datetime.now(JST).date()
@@ -108,9 +119,10 @@ def install_line_identity(app, connect):
         with connect() as c:
             uid = verified_user(c, data)
             link = linked_staff(c, uid)
+            can_manage = manager_menu_allowed(c, uid)
             people = c.execute('''SELECT s.id,s.name,l.line_user_id FROM staff s
                 LEFT JOIN line_staff_links l ON l.staff_id=s.id WHERE s.active=1 ORDER BY s.sort_order,s.id''').fetchall()
-        return jsonify(ok=True, linked=dict(link) if link else None,
+        return jsonify(ok=True, linked=dict(link) if link else None, manager_menu=can_manage,
                        staff=[{'id': p['id'], 'name': p['name'],
                                'taken': bool(p['line_user_id'] and p['line_user_id'] != uid)} for p in people])
 
@@ -173,11 +185,30 @@ def install_line_identity(app, connect):
         with connect() as c:
             if request.method == 'POST':
                 c.execute('SELECT pg_advisory_xact_lock(%s)', (IDENTITY_LOCK,))
-                if request.form.get('action') == 'unlink':
+                if request.form.get('action') in {'manager_menu_enable', 'manager_menu_disable'}:
                     try:
                         staff_id = int(request.form.get('staff_id'))
                     except (ValueError, TypeError):
                         abort(400)
+                    person = c.execute('''SELECT s.id,l.line_user_id FROM staff s JOIN line_staff_links l
+                        ON l.staff_id=s.id WHERE s.id=%s AND s.active=1''', (staff_id,)).fetchone()
+                    if not person:
+                        abort(409, description='Nhân viên cần liên kết LINE trước.')
+                    if request.form['action'] == 'manager_menu_enable':
+                        c.execute('''INSERT INTO line_manager_menu_links(line_user_id,staff_id,granted_by)
+                            VALUES(%s,%s,%s) ON CONFLICT(line_user_id) DO UPDATE
+                            SET staff_id=excluded.staff_id,granted_by=excluded.granted_by''',
+                            (person['line_user_id'], staff_id, g.manager['id']))
+                        notice = 'Đã bật nút Quản lý lịch cho tài khoản LINE này. Vẫn cần đăng nhập quản lý để sửa lịch.'
+                    else:
+                        c.execute('DELETE FROM line_manager_menu_links WHERE line_user_id=%s', (person['line_user_id'],))
+                        notice = 'Đã ẩn nút Quản lý lịch của tài khoản LINE này.'
+                elif request.form.get('action') == 'unlink':
+                    try:
+                        staff_id = int(request.form.get('staff_id'))
+                    except (ValueError, TypeError):
+                        abort(400)
+                    c.execute('DELETE FROM line_manager_menu_links WHERE staff_id=%s', (staff_id,))
                     c.execute('DELETE FROM line_staff_links WHERE staff_id=%s', (staff_id,))
                     notice = 'Đã gỡ liên kết. Nhân viên có thể chọn lại tên lần mở LINE tiếp theo.'
                 else:
@@ -195,8 +226,10 @@ def install_line_identity(app, connect):
                             notice = 'Đã lưu kết nối LINE. Nhân viên mở link LIFF để chọn tên lần đầu.'
                 c.commit()
             settings = config(c)
-            links = c.execute('''SELECT s.id,s.name,s.active,l.linked_at FROM line_staff_links l
-                JOIN staff s ON s.id=l.staff_id ORDER BY s.sort_order,s.id''').fetchall()
+            links = c.execute('''SELECT s.id,s.name,s.active,l.linked_at,m.line_user_id AS manager_menu
+                FROM line_staff_links l JOIN staff s ON s.id=l.staff_id
+                LEFT JOIN line_manager_menu_links m ON m.line_user_id=l.line_user_id AND m.staff_id=l.staff_id
+                ORDER BY s.sort_order,s.id''').fetchall()
         return render_template('line_identity_settings.html', settings=settings, links=links, notice=notice)
 
     from staff_schedule import install_staff_schedule

@@ -36,7 +36,7 @@ def install_manager_auth(app, connect):
                         'manager_login', 'manager_setup', 'manager_activate', 'healthz',
                         'line_webhook', 'line_schedule_image', 'line_kibo_entry',
                         'line_identity_profile', 'line_identity_link', 'line_identity_privacy',
-                        'staff_schedule', 'staff_schedule_image'}
+                        'staff_schedule', 'staff_schedule_image', 'staff_manage_entry'}
 
     def csrf():
         if 'csrf' not in session:

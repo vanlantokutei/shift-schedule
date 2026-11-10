@@ -125,3 +125,36 @@ def test_sync_requires_owner_csrf_and_rejects_stale_preview(linked_state):
     assert response.status_code==409 and raw.execute('SELECT COUNT(*) FROM staff_schedule_publications').fetchone()[0]==0
     raw.execute("UPDATE manager_accounts SET role='manager'");raw.commit()
     assert get(owner,'/admin/line/schedule-sync').status_code==403
+
+
+def test_line_manager_button_is_pinned_and_does_not_grant_editing(linked_state):
+    app,raw,service,calls,manager_env=linked_state
+    owner=setup(manager_env);lan=link(app)
+    staff=app.test_client()
+    assert post(staff,'/line/identity/link',{'id_token':'valid-two','staff_id':2}).status_code==200
+    assert 'Quản lý lịch'.encode() not in get(lan).data
+    token=csrf(owner,'/admin/line/identity')
+    response=owner.post('/admin/line/identity',data={'csrf_token':token,'action':'manager_menu_enable','staff_id':1},base_url='https://localhost')
+    assert response.status_code==200
+    assert 'Quản lý lịch'.encode() in get(lan).data
+    assert 'Quản lý lịch'.encode() not in get(staff).data
+    assert get(lan,'/staff/manage').location.endswith('/admin/login')
+    assert lan.post('/shift',json={},base_url='https://localhost').status_code==401
+    assert get(staff,'/staff/manage').status_code==403
+    assert staff.post('/admin/line/identity',data={'action':'manager_menu_enable','staff_id':2},base_url='https://localhost').status_code==401
+    # Reassigning the same staff name to a different LINE account cannot inherit the button.
+    raw.execute('DELETE FROM line_staff_links');raw.commit()
+    post(staff,'/line/identity/link',{'id_token':'valid-two','staff_id':1})
+    assert 'Quản lý lịch'.encode() not in get(staff).data
+    assert get(staff,'/staff/manage').status_code==403
+
+
+def test_manager_button_revocation_and_existing_owner_login(linked_state):
+    app,raw,service,calls,manager_env=linked_state
+    owner=setup(manager_env);lan=link(app)
+    token=csrf(owner,'/admin/line/identity')
+    for action in ['manager_menu_enable','manager_menu_disable']:
+        assert owner.post('/admin/line/identity',data={'csrf_token':token,'action':action,'staff_id':1},base_url='https://localhost').status_code==200
+    assert 'Quản lý lịch'.encode() not in get(lan).data
+    assert get(lan,'/staff/manage').status_code==403
+    assert get(owner,'/staff/manage').location=='/'

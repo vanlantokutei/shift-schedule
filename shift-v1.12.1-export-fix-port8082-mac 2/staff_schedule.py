@@ -18,6 +18,22 @@ def install_staff_schedule(app, connect, linked_staff):
             return dict(person) if person else None, None
         return None, redirect('/kibo/line?' + urlencode({'view': 'schedule', 'mine': request.args.get('mine', '0')}))
 
+    def can_manage(c):
+        if getattr(g, 'manager', None):
+            return True
+        uid = session.get('line_staff_user')
+        return bool(uid and session.get('line_staff_exp', 0) > time.time()
+                    and app.extensions['line_identity']['manager_menu_allowed'](c, uid))
+
+    @app.get('/staff/manage')
+    def staff_manage_entry():
+        with connect() as c:
+            if not can_manage(c):
+                abort(403, description='Tài khoản này không có nút quản lý lịch.')
+        # LINE identity only controls visibility. Editing always requires the
+        # existing manager password/session and the existing CSRF protection.
+        return redirect('/' if getattr(g, 'manager', None) else '/admin/login')
+
     def selected_week():
         value = request.args.get('week')
         if not value:
@@ -93,6 +109,7 @@ def install_staff_schedule(app, connect, linked_staff):
             me, response = authorize(c)
             if response is not None:
                 return response
+            show_manager_menu = can_manage(c)
             saved = publication(c, week)
             old = old_publication(c, week) if not saved else None
             # First visit opens this week if available, otherwise the latest publication.
@@ -120,7 +137,7 @@ def install_staff_schedule(app, connect, linked_staff):
         cells = {(r['staff_id'], str(r['work_date'])): r for r in content['shifts']}
         return render_template('staff_schedule.html', **holiday_context(days), week=week, days=days, people=people,
             selected=selected, me=me, cells=cells, saved=bool(saved), old=bool(old),
-            imported=content.get('source') == 'manager-import',
+            imported=content.get('source') == 'manager-import', show_manager_menu=show_manager_menu,
             previous=week-timedelta(days=7), following=week+timedelta(days=7),
             labels=['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật'])
 
