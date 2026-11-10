@@ -41,6 +41,7 @@
       document.getElementById('linePublishWishNote').textContent = preview.wishes
         ? `Có ${preview.wishes} ca 希望 trên bảng. Khi chốt, các ca này sẽ được xác nhận thành ca làm chính thức theo ảnh bên dưới.`
         : 'Các ca đã xếp sẽ được chốt và gửi vào nhóm.';
+      document.getElementById('linePublishMessage').textContent = preview.message_preview || '';
       error.textContent = '';
       image.src = '/line/publish-preview.png?week=' + encodeURIComponent(preview.week) + '&version=' + encodeURIComponent(preview.version);
       image.onerror = () => {

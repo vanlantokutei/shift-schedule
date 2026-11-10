@@ -49,6 +49,19 @@ def registration_reminder(connection, current_week, now, test=False, signup_url=
     )
 
 
+def publication_text(week, updated=False):
+    """Vietnamese notice accompanying the official schedule image."""
+    label = 'Lịch cập nhật' if updated else 'Lịch đã chốt'
+    intro = ('Lịch làm việc đã được điều chỉnh. Đây là bản mới nhất, thay cho bản đã gửi trước.'
+             if updated else 'Lịch làm việc tuần này đã được chốt.')
+    return (f'📅 Betoya Tsukiji — {label}\n'
+            f'Tuần {week:%d/%m}–{week + timedelta(days=6):%d/%m/%Y}\n\n'
+            f'{intro}\n'
+            'Mọi người vui lòng kiểm tra ca làm và giờ nghỉ trong ảnh đính kèm.\n'
+            'Nếu có thắc mắc hoặc cần đổi ca, hãy báo lại cho quản lý.\n\n'
+            'Cảm ơn mọi người!')
+
+
 def signature_valid(secret, body, signature):
     expected = base64.b64encode(hmac.new(secret.encode(), body, hashlib.sha256).digest()).decode()
     return bool(signature) and hmac.compare_digest(expected, signature)
@@ -275,11 +288,10 @@ class LineSchedule:
                 previous = c.execute('''SELECT week_start FROM line_schedule_deliveries
                     WHERE week_start LIKE %s AND accepted_at IS NOT NULL LIMIT 1''',
                     ('published:' + str(week) + ':%',)).fetchone()
-                label = 'Lịch cập nhật' if previous else 'Lịch đã chốt'
                 image_id = secrets.token_urlsafe(32)
                 image_url = config['public_origin'] + '/line/schedule/' + image_id + '.png'
                 payload = {'to': config['group_id'], 'messages': [
-                    {'type': 'text', 'text': f'📅 ベト屋築地店 — {label}\n{week:%d/%m}–{week + timedelta(days=6):%d/%m/%Y}'},
+                    {'type': 'text', 'text': publication_text(week, updated=bool(previous))},
                     {'type': 'image', 'originalContentUrl': image_url, 'previewImageUrl': image_url}]}
                 c.execute('''INSERT INTO line_schedule_deliveries
                     (week_start,image_id,png,payload,retry_key,next_attempt,expires_at)
@@ -324,7 +336,8 @@ def install_line_schedule(app, connect, start_worker=True):
         return jsonify(ok=True, week=str(week), end=str(week + timedelta(days=6)),
                        group_name=config['group_name'], shifts=len(rows),
                        wishes=sum(bool(r['is_kibo']) for r in rows), version=version,
-                       already_sent=bool(job and job['accepted_at']), has_previous=bool(previous))
+                       already_sent=bool(job and job['accepted_at']), has_previous=bool(previous),
+                       message_preview=publication_text(week, updated=bool(previous)))
 
     @app.get('/line/publish-preview.png')
     def line_publish_preview_image():
