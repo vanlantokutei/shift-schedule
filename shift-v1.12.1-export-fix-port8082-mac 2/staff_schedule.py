@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 import hashlib
 import hmac
+from jp_holidays import holiday_context
 import json
 import time
 from urllib.parse import urlencode
@@ -117,7 +118,7 @@ def install_staff_schedule(app, connect, linked_staff):
             selected = next((p for p in content['people'] if p['id'] == wanted), None)
         people = [selected] if selected else content['people']
         cells = {(r['staff_id'], str(r['work_date'])): r for r in content['shifts']}
-        return render_template('staff_schedule.html', week=week, days=days, people=people,
+        return render_template('staff_schedule.html', **holiday_context(days), week=week, days=days, people=people,
             selected=selected, me=me, cells=cells, saved=bool(saved), old=bool(old),
             imported=content.get('source') == 'manager-import',
             previous=week-timedelta(days=7), following=week+timedelta(days=7),
