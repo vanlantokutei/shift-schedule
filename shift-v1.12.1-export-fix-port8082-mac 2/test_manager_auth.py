@@ -26,6 +26,7 @@ class LocalConnection:
 def env(monkeypatch):
     monkeypatch.delenv('ADMIN_SETUP_TOKEN',raising=False)
     raw=sqlite3.connect(':memory:');raw.row_factory=sqlite3.Row
+    raw.executescript("CREATE TABLE branches(id INTEGER PRIMARY KEY,name TEXT UNIQUE); INSERT INTO branches VALUES(1,'ベト屋築地店'),(2,'デリメシ店');")
     connect=lambda:LocalConnection(raw)
     app=Flask(__name__,template_folder=str(Path(__file__).parent/'templates'))
     app.testing=True
@@ -105,7 +106,7 @@ def test_invitation_activation_permissions_and_revocation(env):
     token=csrf(owner,'/admin/accounts')
     r=post(owner,'/admin/accounts',dict(csrf_token=token,username='manager2',display_name='Quản lý 2'))
     assert r.status_code==200
-    invite=re.search(rb'value="https://localhost/admin/activate#([^"]+)"',r.data).group(1).decode()
+    invite=re.search(rb'value="https://localhost/admin/activate\?branch=1#([^"]+)"',r.data).group(1).decode()
     manager=app.test_client()
     activation_csrf=csrf(manager,'/admin/activate')
     data=dict(csrf_token=activation_csrf,invite_token=invite,password='manager-secret-123',confirm_password='manager-secret-123')
@@ -132,7 +133,7 @@ def test_rate_limit_and_bad_credentials(env):
 def test_expired_invite_rejected(env):
     owner=setup(env);app,raw,_=env;token=csrf(owner,'/admin/accounts')
     r=post(owner,'/admin/accounts',dict(csrf_token=token,username='expired',display_name='Expired'))
-    invite=re.search(rb'value="https://localhost/admin/activate#([^"]+)"',r.data).group(1).decode()
+    invite=re.search(rb'value="https://localhost/admin/activate\?branch=1#([^"]+)"',r.data).group(1).decode()
     raw.execute("UPDATE manager_accounts SET invite_expires='2000-01-01' WHERE username='expired'");raw.commit()
     c=app.test_client()
     assert post(c,'/admin/activate',dict(csrf_token=csrf(c,'/admin/activate'),invite_token=invite,password='manager-secret-123',confirm_password='manager-secret-123')).status_code==400

@@ -35,7 +35,7 @@ def install_manager_auth(app, connect):
 
     dummy_hash = generate_password_hash(secrets.token_urlsafe(32))
     public_endpoints = {'static', 'kibo', 'kibo_prefill', 'kibo_fixed', 'kibo_fixed_delete',
-                        'manager_login', 'manager_setup', 'manager_activate', 'healthz',
+                        'manager_login', 'manager_setup', 'manager_activate', 'manager_invite_info', 'healthz',
                         'line_webhook', 'line_schedule_image', 'line_kibo_entry',
                         'line_identity_profile', 'line_identity_link', 'line_identity_privacy',
                         'staff_schedule', 'staff_schedule_image', 'staff_manage_entry'}
@@ -62,8 +62,37 @@ def install_manager_auth(app, connect):
         with connect() as c:
             return c.execute("SELECT id FROM manager_accounts WHERE role='owner' LIMIT 1").fetchone() is not None
 
+    def branch_record(value):
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            return None
+        with connect() as c:
+            row = c.execute('SELECT id,name FROM branches WHERE id=%s', (value,)).fetchone()
+        return dict(row) if row else None
+
+    def landing(user):
+        # The authenticated account determines Tencho authority, never the URL hint.
+        hint = branch_record(request.args['branch']) if user['role']=='owner' and request.args.get('branch') else None
+        selected = user['branch_id'] if user['role'] != 'owner' else session.get('branch_id', hint['id'] if hint else user['branch_id'])
+        session['branch_id'] = selected
+        return redirect(url_for('index', branch=selected))
+
+    def invitation_details(token):
+        if not isinstance(token, str) or not 20 <= len(token) <= 200:
+            return None
+        with connect() as c:
+            row = c.execute('''SELECT b.id,b.name FROM manager_accounts a JOIN branches b ON b.id=a.branch_id
+                WHERE a.invite_hash=%s AND a.active=1 AND a.password_hash IS NULL
+                AND a.invite_expires>CURRENT_TIMESTAMP''', (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
+        return dict(row) if row else None
+
     def page(mode, error=None, **kw):
-        return render_template('manager_auth.html', mode=mode, error=error, **kw)
+        auth_branch = getattr(g, 'invitation_branch', None) if mode == 'activate' else None
+        if mode == 'login' and request.args.get('branch'):
+            auth_branch = branch_record(request.args['branch'])
+        return render_template('manager_auth.html', mode=mode, error=error,
+                               auth_branch=auth_branch, **kw)
 
     def valid_account(username, display_name):
         return bool(re.fullmatch(r'[a-z0-9][a-z0-9_.-]{2,39}', username)) and 1 <= len(display_name) <= 80
@@ -122,7 +151,7 @@ def install_manager_auth(app, connect):
     @app.route('/admin/login', methods=['GET','POST'])
     def manager_login():
         if g.manager:
-            return redirect(url_for('index'))
+            return landing(g.manager)
         if request.method == 'POST':
             username = request.form.get('username','').strip().lower()[:100]
             if limited('login-address:' + (request.remote_addr or ''), maximum=100) or limited('login:' + username):
@@ -137,7 +166,7 @@ def install_manager_auth(app, connect):
                 session['manager_id'] = user['id']
                 session['manager_version'] = user['version']
                 csrf()
-                return redirect(url_for('index'))
+                return landing(user)
             return page('login', 'Tên đăng nhập hoặc mật khẩu không đúng.'),401
         return page('login', setup_available=not has_owner())
 
@@ -193,11 +222,11 @@ def install_manager_auth(app, connect):
                         ON CONFLICT(username) DO NOTHING RETURNING id''',
                         (username,name,hashlib.sha256(token.encode()).hexdigest(),assigned_branch)).fetchone()
                 if result:
-                    invitation=url_for('manager_activate',_external=True)+'#'+token
+                    invitation=url_for('manager_activate',branch=assigned_branch,_external=True)+'#'+token
                 else:
                     error='Tên đăng nhập đã tồn tại.'
         with connect() as c:
-            accounts=c.execute('SELECT id,username,display_name,role,active,branch_id,password_hash IS NOT NULL AS activated FROM manager_accounts ORDER BY id').fetchall()
+            accounts=c.execute('SELECT a.id,a.username,a.display_name,a.role,a.active,a.branch_id,b.name AS branch_name,a.password_hash IS NOT NULL AS activated FROM manager_accounts a JOIN branches b ON b.id=a.branch_id ORDER BY a.id').fetchall()
         return page('accounts',accounts=accounts,invitation=invitation,error=error)
 
     @app.post('/admin/accounts/<int:account_id>/disable')
@@ -206,21 +235,35 @@ def install_manager_auth(app, connect):
             c.execute("UPDATE manager_accounts SET active=0,version=version+1,invite_hash=NULL WHERE id=%s AND role!='owner'",(account_id,))
         return redirect(url_for('manager_accounts'))
 
+    @app.post('/admin/invite-info')
+    def manager_invite_info():
+        if limited('invite-info:' + (request.remote_addr or ''), maximum=60):
+            return jsonify(ok=False, error='Vui lòng đợi 15 phút rồi mở lại link.'),429
+        data = request.get_json(silent=True) or {}
+        branch = invitation_details(data.get('invite_token')) if isinstance(data, dict) else None
+        if not branch:
+            return jsonify(ok=False, error='Link đã hết hạn hoặc đã được sử dụng.'),400
+        return jsonify(ok=True, branch=branch)
+
     @app.route('/admin/activate',methods=['GET','POST'])
     def manager_activate():
         if request.method=='POST':
             if limited('activate',maximum=30):
                 return page('activate','Đã thử quá nhiều lần. Vui lòng đợi 15 phút.'),429
+            token=request.form.get('invite_token','')
+            g.invitation_branch=invitation_details(token)
+            if not g.invitation_branch:
+                return page('activate','Link đã hết hạn hoặc đã được sử dụng.'),400
             error=password_error()
             if error:
                 return page('activate',error),400
-            token=request.form.get('invite_token','')
             with connect() as c:
                 user=c.execute('''UPDATE manager_accounts SET password_hash=%s,invite_hash=NULL,invite_expires=NULL,
-                     version=version+1 WHERE invite_hash=%s AND active=1 AND invite_expires>CURRENT_TIMESTAMP
-                     RETURNING id''',(generate_password_hash(request.form['password']),hashlib.sha256(token.encode()).hexdigest())).fetchone()
+                     version=version+1 WHERE invite_hash=%s AND active=1 AND password_hash IS NULL
+                     AND invite_expires>CURRENT_TIMESTAMP RETURNING id,branch_id''',
+                     (generate_password_hash(request.form['password']),hashlib.sha256(token.encode()).hexdigest())).fetchone()
             if not user:
                 return page('activate','Link đã hết hạn hoặc đã được sử dụng.'),400
             session.clear()
-            return redirect(url_for('manager_login'))
+            return redirect(url_for('manager_login',branch=user['branch_id']))
         return page('activate')

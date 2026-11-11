@@ -25,7 +25,7 @@ def init_branches(connect):
 def install_branches(app, connect):
     @app.before_request
     def choose_branch():
-        if request.endpoint in {'static', 'healthz'}:
+        if request.endpoint in {'static', 'healthz', 'manager_login', 'manager_activate', 'manager_invite_info', 'manager_setup'}:
             return
         manager = getattr(g, 'manager', None)
         raw = request.values.get('branch')
