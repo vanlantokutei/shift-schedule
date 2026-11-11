@@ -29,19 +29,21 @@
     try {
       preview = await loadPreview();
       if (!preview.shifts) throw new Error('Tuần đang xem chưa có ca làm để chốt.');
-      if (preview.already_sent) {
-        status.textContent = 'Phiên bản lịch này đã được LINE tiếp nhận. Khi sửa lịch, bạn có thể gửi bản cập nhật.';
+      const privateOnly=preview.already_sent && !preview.private_status.total && preview.private_recipients>0;
+      if (preview.already_sent && !privateOnly) {
+        const p=preview.private_status;
+        status.textContent = `Phiên bản này đã gửi nhóm. Lịch riêng: ${p.accepted} đã được LINE tiếp nhận, ${p.pending} đang chờ, ${p.stopped} đã dừng. Khi sửa lịch, bạn có thể gửi bản cập nhật.`;
         return;
       }
-      const label = preview.has_previous ? 'Gửi lịch cập nhật' : 'Chốt lịch & gửi LINE';
+      const label = privateOnly ? 'Gửi lịch riêng cho nhân viên' : (preview.has_previous ? 'Gửi lịch cập nhật' : 'Chốt lịch & gửi LINE');
       document.getElementById('linePublishTitle').textContent = label;
       confirm.textContent = label;
       document.getElementById('linePublishSummary').textContent =
-        `Tuần ${dateLabel(preview.week)}–${dateLabel(preview.end)} · Nhóm nhận: ${preview.group_name} · ${preview.shifts} ca làm.`;
+        `Tuần ${dateLabel(preview.week)}–${dateLabel(preview.end)} · Nhóm nhận: ${preview.group_name} · ${preview.shifts} ca làm. Lịch riêng sẽ được gửi cho ${preview.private_recipients} nhân viên đã liên kết.`;
       document.getElementById('linePublishWishNote').textContent = preview.wishes
         ? `Có ${preview.wishes} ca 希望 trên bảng. Khi chốt, các ca này sẽ được xác nhận thành ca làm chính thức theo ảnh bên dưới.`
         : 'Các ca đã xếp sẽ được chốt và gửi vào nhóm.';
-      document.getElementById('linePublishMessage').textContent = preview.message_preview || '';
+      document.getElementById('linePublishMessage').textContent = privateOnly ? 'Lịch tổng đã gửi vào nhóm. Lần này chỉ gửi lịch riêng cho từng nhân viên đã liên kết.' : (preview.message_preview || '');
       error.textContent = '';
       image.src = '/line/publish-preview.png?week=' + encodeURIComponent(preview.week) + '&version=' + encodeURIComponent(preview.version);
       image.onerror = () => {

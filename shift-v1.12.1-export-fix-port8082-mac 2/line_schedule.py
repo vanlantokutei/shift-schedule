@@ -166,6 +166,7 @@ def schedule_image(week, staff, rows):
 class LineSchedule:
     def __init__(self, app, connect):
         self.app, self.connect = app, connect
+        self.wake_worker = threading.Event()
         key = hashlib.sha256(('line-credentials:' + app.secret_key).encode()).digest()
         self.cipher = Fernet(base64.urlsafe_b64encode(key))
 
@@ -197,6 +198,9 @@ class LineSchedule:
         now = now or datetime.now(JST)
         week = scheduled_week(now)
         result = self.deliver(week, now, 'reminder:' + str(week)) if week else None
+        publications = self.app.extensions.get('line_private_publications')
+        if publications:
+            publications.tick(now)
         private = self.app.extensions.get('line_private_reminders')
         if private:
             private.tick(now)
@@ -262,7 +266,8 @@ class LineSchedule:
             except Exception:
                 # Do not log payloads, group messages or credentials.
                 self.app.logger.error('LINE weekly delivery check failed; will retry.')
-            threading.Event().wait(30)
+            self.wake_worker.wait(30)
+            self.wake_worker.clear()
 
     def publish(self, week, expected_version, now=None):
         now = now or datetime.now(JST)
@@ -283,11 +288,16 @@ class LineSchedule:
                     or not hmac.compare_digest(version, expected_version)):
                 return {'ok': False, 'error': 'Lịch hoặc nhóm nhận vừa thay đổi. Hãy mở lại bản xem trước.'}, 409
             key = 'published:' + str(week) + ':' + version
+            private = self.app.extensions['line_private_publications']
+            private_stats = private.stats(c,key)
             job = c.execute('SELECT * FROM line_schedule_deliveries WHERE week_start=%s', (key,)).fetchone()
             if job and job['accepted_at']:
-                return {'ok': True, 'duplicate': True, 'message': 'Phiên bản lịch này đã được LINE tiếp nhận. Không gửi lặp.'}, 200
+                private_stats=private.enqueue(c,key,week,rows,now)
+                c.commit();self.wake_worker.set()
+                return {'ok': True, 'duplicate': True, 'private': private_stats, 'message': 'Lịch tổng đã được LINE tiếp nhận trước đó. Lịch riêng: ' + str(private_stats['accepted']) + ' đã tiếp nhận, ' + str(private_stats['pending']) + ' đang chờ gửi.'}, 200
             if job and job['expires_at'] - timedelta(days=6) <= now:
                 return {'ok': False, 'error': 'Lần gửi trước đã quá 24 giờ. Kiểm tra nhóm LINE trước khi gửi lại.'}, 409
+            private_stats = private.enqueue(c,key,week,rows,now)
             if not job:
                 previous = c.execute('''SELECT week_start FROM line_schedule_deliveries
                     WHERE week_start LIKE %s AND accepted_at IS NOT NULL LIMIT 1''',
@@ -321,8 +331,9 @@ class LineSchedule:
                         'error': 'Đã chốt ca nhưng LINE chưa xác nhận gửi. Bấm gửi lại để thử lại cùng phiên bản.'}, 502
             c.execute('UPDATE line_schedule_deliveries SET accepted_at=%s WHERE week_start=%s', (now, key))
             c.execute('UPDATE staff_schedule_publications SET published_at=%s WHERE publication_key=%s', (now, key))
-            return {'ok': True, 'duplicate': False,
-                    'message': 'Đã chốt lịch. LINE đã tiếp nhận ảnh gửi vào nhóm ' + config['group_name'] + '.'}, 200
+            c.commit();self.wake_worker.set()
+            return {'ok': True, 'duplicate': False, 'private':private_stats,
+                    'message': 'Đã chốt lịch. LINE đã tiếp nhận ảnh gửi vào nhóm ' + config['group_name'] + '. Đã xếp hàng gửi lịch riêng cho ' + str(private_stats['total']) + ' nhân viên đã liên kết.'}, 200
 
 
 def install_line_schedule(app, connect, start_worker=True):
@@ -340,11 +351,13 @@ def install_line_schedule(app, connect, start_worker=True):
             people, rows, version = publication_snapshot(c, week, config['group_id'])
             key = 'published:' + str(week) + ':' + version
             job = c.execute('SELECT accepted_at FROM line_schedule_deliveries WHERE week_start=%s', (key,)).fetchone()
+            private_recipients=len(app.extensions['line_private_publications'].recipients(c))
+            private_status=app.extensions['line_private_publications'].stats(c,key)
             previous = c.execute('''SELECT week_start FROM line_schedule_deliveries
                 WHERE week_start LIKE %s AND accepted_at IS NOT NULL LIMIT 1''',
                 ('published:' + str(week) + ':%',)).fetchone()
         return jsonify(ok=True, week=str(week), end=str(week + timedelta(days=6)),
-                       group_name=config['group_name'], shifts=len(rows),
+                       group_name=config['group_name'], shifts=len(rows),private_recipients=private_recipients,private_status=private_status,
                        wishes=sum(bool(r['is_kibo']) for r in rows), version=version,
                        already_sent=bool(job and job['accepted_at']), has_previous=bool(previous),
                        message_preview=publication_text(week, updated=bool(previous)))
@@ -579,6 +592,8 @@ def install_line_schedule(app, connect, start_worker=True):
     install_line_identity(app, connect)
     from line_private_reminders import install_private_reminders
     install_private_reminders(app, connect, service, lambda *args, **kwargs: line_request(*args, **kwargs))
+    from line_private_publications import PrivatePublications
+    app.extensions['line_private_publications']=PrivatePublications(connect,service,lambda *args, **kwargs: line_request(*args, **kwargs))
     if start_worker and not os.environ.get('LINE_SCHEDULER_DISABLED'):
         threading.Thread(target=service.loop, name='line-weekly-schedule', daemon=True).start()
     return service
