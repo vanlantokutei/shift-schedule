@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import jsonify, request
+from branches import branch_id
 
 JST = ZoneInfo('Asia/Tokyo')
 
@@ -9,8 +10,7 @@ JST = ZoneInfo('Asia/Tokyo')
 def window(connection, week):
     opens = datetime.combine(week - timedelta(days=7), datetime.min.time(), JST)
     deadline = opens + timedelta(days=3, hours=22)
-    row = connection.execute('SELECT deadline FROM kibo_deadlines WHERE week_start=%s',
-                             (str(week),)).fetchone()
+    row = (connection.execute('SELECT deadline FROM kibo_deadlines WHERE week_start=%s', (str(week),)) if branch_id()==1 else connection.execute('SELECT deadline FROM branch_kibo_deadlines WHERE branch_id=%s AND week_start=%s', (branch_id(),str(week)))).fetchone()
     if row:
         saved = row['deadline']
         if isinstance(saved, str):
@@ -41,6 +41,9 @@ def install_deadline_route(app, connect):
                 return jsonify(ok=False, error='Tuần này chưa mở đăng ký Kibo.'), 400
             if deadline <= now or deadline <= current:
                 return jsonify(ok=False, error='Hạn mới phải sau thời điểm hiện tại và hạn đang áp dụng.'), 400
+            if branch_id()!=1:
+                connection.execute("""INSERT INTO branch_kibo_deadlines(branch_id,week_start,deadline) VALUES(%s,%s,%s) ON CONFLICT(branch_id,week_start) DO UPDATE SET deadline=excluded.deadline""", (branch_id(),str(week),deadline))
+                return jsonify(ok=True, deadline=deadline.isoformat())
             connection.execute("""INSERT INTO kibo_deadlines(week_start,deadline) VALUES(%s,%s)
                 ON CONFLICT(week_start) DO UPDATE SET deadline=excluded.deadline""",
                 (str(week), deadline))

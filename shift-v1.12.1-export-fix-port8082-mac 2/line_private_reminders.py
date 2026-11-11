@@ -52,7 +52,7 @@ class PrivateReminders:
         return c.execute('''SELECT s.id,s.name,l.line_user_id FROM staff s
             JOIN line_staff_links l ON l.staff_id=s.id
             LEFT JOIN line_private_follows f ON f.line_user_id=l.line_user_id
-            WHERE s.active=1 AND (f.active IS NULL OR f.active=1)
+            WHERE s.active=1 AND s.branch_id=1 AND (f.active IS NULL OR f.active=1)
             AND NOT EXISTS(SELECT 1 FROM kibo_submissions k WHERE k.staff_id=s.id AND k.week_start=%s)
             AND NOT EXISTS(SELECT 1 FROM shifts sh WHERE sh.staff_id=s.id
                 AND sh.work_date BETWEEN %s AND %s AND sh.is_kibo=1)
@@ -164,7 +164,7 @@ def install_private_reminders(app, connect, service, send):
             people = c.execute('''SELECT s.id,s.name,l.staff_id AS linked,f.active AS follows
                 FROM staff s LEFT JOIN line_staff_links l ON l.staff_id=s.id
                 LEFT JOIN line_private_follows f ON f.line_user_id=l.line_user_id
-                WHERE s.active=1 ORDER BY s.sort_order,s.id''').fetchall()
+                WHERE s.active=1 AND s.branch_id=1 ORDER BY s.sort_order,s.id''').fetchall()
             recent = c.execute('''SELECT d.week_start,s.name,d.accepted_at,d.last_error FROM line_private_deliveries d
                 LEFT JOIN staff s ON s.id=d.staff_id ORDER BY d.next_attempt DESC LIMIT 10''').fetchall()
         return render_template('line_private_settings.html',settings=settings,master=master,notice=notice,

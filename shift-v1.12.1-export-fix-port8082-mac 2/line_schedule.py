@@ -79,10 +79,10 @@ def publish_week(value):
 
 def publication_snapshot(connection, week, group_id):
     rows = connection.execute('''SELECT staff_id,work_date,start,"end",break_start,break_end,
-        break2_start,break2_end,is_kibo FROM shifts WHERE work_date BETWEEN %s AND %s
+        break2_start,break2_end,is_kibo FROM shifts WHERE staff_id IN (SELECT id FROM staff WHERE branch_id=1) AND work_date BETWEEN %s AND %s
         AND start IS NOT NULL AND "end" IS NOT NULL ORDER BY staff_id,work_date''',
         (str(week), str(week + timedelta(days=6)))).fetchall()
-    people = connection.execute('SELECT id,name,active FROM staff ORDER BY sort_order,id').fetchall()
+    people = connection.execute('SELECT id,name,active FROM staff WHERE branch_id=1 ORDER BY sort_order,id').fetchall()
     ids = {r['staff_id'] for r in rows}
     people = [p for p in people if p['active'] or p['id'] in ids]
     # Wish approval does not change the displayed image, so it must not change
@@ -307,7 +307,7 @@ class LineSchedule:
             c.execute("""INSERT INTO staff_schedule_publications(publication_key,week_start,content)
                 VALUES(%s,%s,%s) ON CONFLICT(publication_key) DO NOTHING""",
                 (key, str(week), json.dumps(content, ensure_ascii=False)))
-            c.execute('''UPDATE shifts SET is_kibo=0 WHERE work_date BETWEEN %s AND %s
+            c.execute('''UPDATE shifts SET is_kibo=0 WHERE staff_id IN (SELECT id FROM staff WHERE branch_id=1) AND work_date BETWEEN %s AND %s
                 AND start IS NOT NULL AND "end" IS NOT NULL''',
                 (str(week), str(week + timedelta(days=6))))
             # Release schedule locks and make the immutable image fetchable by LINE.
@@ -466,9 +466,9 @@ def install_line_schedule(app, connect, start_worker=True):
         today = datetime.now(JST).date()
         week = today - timedelta(days=today.weekday())
         with connect() as c:
-            staff = c.execute('SELECT id,name,active FROM staff ORDER BY sort_order,id').fetchall()
+            staff = c.execute('SELECT id,name,active FROM staff WHERE branch_id=1 ORDER BY sort_order,id').fetchall()
             rows = c.execute('''SELECT staff_id,work_date,start,"end",break_start,break_end,break2_start,break2_end
-                FROM shifts WHERE work_date BETWEEN %s AND %s AND COALESCE(is_kibo,0)=0''',
+                FROM shifts WHERE staff_id IN (SELECT id FROM staff WHERE branch_id=1) AND work_date BETWEEN %s AND %s AND COALESCE(is_kibo,0)=0''',
                 (str(week), str(week + timedelta(days=6)))).fetchall()
         ids = {r['staff_id'] for r in rows}
         return Response(schedule_image(week, [s for s in staff if s['active'] or s['id'] in ids], rows), mimetype='image/png')
@@ -505,7 +505,7 @@ def install_line_schedule(app, connect, start_worker=True):
                     if isinstance(message, dict) and message.get('type') == 'text' and message.get('text') in ('Xem lịch', 'Liên hệ Tencho'):
                         user_id = source.get('userId', '')
                         linked = c.execute('SELECT s.id FROM line_staff_links l JOIN staff s ON s.id=l.staff_id '
-                                           'WHERE l.line_user_id=%s AND s.active=1', (user_id,)).fetchone()
+                                           'WHERE l.line_user_id=%s AND s.active=1 AND s.branch_id=1', (user_id,)).fetchone()
                         identity = app.extensions.get('line_identity')
                         today = datetime.now(JST).date()
                         week = today - timedelta(days=today.weekday()) + timedelta(days=7)

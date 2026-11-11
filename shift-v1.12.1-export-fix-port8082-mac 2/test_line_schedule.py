@@ -48,6 +48,7 @@ def state(env, monkeypatch):
         break_end TEXT,break2_start TEXT,break2_end TEXT,is_kibo INTEGER);
         INSERT INTO shifts VALUES(1,'2026-11-16','07:30','19:30','12:00','12:45','16:00','16:15',0);
         INSERT INTO shifts VALUES(2,'2026-11-16','17:00','22:00',NULL,NULL,NULL,NULL,1);''')
+    raw.execute('ALTER TABLE staff ADD COLUMN branch_id INTEGER NOT NULL DEFAULT 1')
     encrypted = service.cipher.encrypt(json.dumps({'secret':'s'*32,'token':'t'*50}).encode()).decode()
     raw.execute('''UPDATE line_schedule_config SET credentials=?,group_id='Cstaff',group_name='Nhân viên',
         public_origin='https://shift-schedule-1fk2.onrender.com',enabled=1 WHERE id=1''',(encrypted,))
@@ -347,3 +348,12 @@ def test_flex_card_has_live_date_deadline_and_registration_action(state):
     assert card['contents']['hero']['contents'][0]['url'].endswith('/static/line/pho-betoya.jpg')
     assert card['contents']['footer']['contents'][0]['action']['uri'].endswith('/kibo?week=2026-11-23')
     assert '99999' not in contents
+
+
+def test_tsukiji_line_snapshot_excludes_other_branch_people_and_shifts(state):
+    _,raw,service,_,_=state
+    raw.execute("INSERT INTO staff(id,name,active,sort_order,hourly_rate,branch_id) VALUES(3,'Other branch',1,0,1700,2)")
+    raw.execute("INSERT INTO shifts(staff_id,work_date,start,\"end\",is_kibo) VALUES(3,'2026-11-16','10:00','20:00',1)")
+    people,rows,_=line.publication_snapshot(service.connect(),date(2026,11,16),'Cstaff')
+    assert {p['id'] for p in people}=={1,2}
+    assert {r['staff_id'] for r in rows}=={1,2}

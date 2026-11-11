@@ -10,6 +10,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 
 def install_manager_auth(app, connect):
+    app.jinja_env.globals['current_branch'] = {'id':1,'name':'ベト屋築地店'}
     app.config.update(SESSION_COOKIE_NAME='betoya_manager', SESSION_COOKIE_SECURE=True,
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax',
                       PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
@@ -25,6 +26,7 @@ def install_manager_auth(app, connect):
             username TEXT UNIQUE NOT NULL, display_name TEXT NOT NULL,
             password_hash TEXT, role TEXT NOT NULL DEFAULT 'manager',
             active INTEGER NOT NULL DEFAULT 1, version INTEGER NOT NULL DEFAULT 1,
+            branch_id INTEGER NOT NULL DEFAULT 1,
             invite_hash TEXT UNIQUE, invite_expires TIMESTAMPTZ,
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)''')
         c.execute('''CREATE TABLE IF NOT EXISTS manager_login_limits (
@@ -86,7 +88,7 @@ def install_manager_auth(app, connect):
         uid = session.get('manager_id')
         if uid:
             with connect() as c:
-                user = c.execute('SELECT id,username,display_name,role,active,version FROM manager_accounts WHERE id=%s', (uid,)).fetchone()
+                user = c.execute('SELECT id,username,display_name,role,active,version,branch_id FROM manager_accounts WHERE id=%s', (uid,)).fetchone()
             if user and user['active'] and user['version'] == session.get('manager_version'):
                 g.manager = user
             else:
@@ -179,21 +181,23 @@ def install_manager_auth(app, connect):
         if request.method=='POST':
             username=request.form.get('username','').strip().lower()
             name=request.form.get('display_name','').strip()
+            from branches import branch_id
+            assigned_branch = branch_id()
             if not valid_account(username,name):
                 error='Tên đăng nhập cần 3–40 ký tự: chữ thường, số, dấu . _ -; hãy nhập tên hiển thị.'
             else:
                 token=secrets.token_urlsafe(32)
                 with connect() as c:
-                    result=c.execute('''INSERT INTO manager_accounts(username,display_name,invite_hash,invite_expires)
-                        VALUES(%s,%s,%s,CURRENT_TIMESTAMP + interval '48 hours')
+                    result=c.execute('''INSERT INTO manager_accounts(username,display_name,invite_hash,invite_expires,branch_id)
+                        VALUES(%s,%s,%s,CURRENT_TIMESTAMP + interval '48 hours',%s)
                         ON CONFLICT(username) DO NOTHING RETURNING id''',
-                        (username,name,hashlib.sha256(token.encode()).hexdigest())).fetchone()
+                        (username,name,hashlib.sha256(token.encode()).hexdigest(),assigned_branch)).fetchone()
                 if result:
                     invitation=url_for('manager_activate',_external=True)+'#'+token
                 else:
                     error='Tên đăng nhập đã tồn tại.'
         with connect() as c:
-            accounts=c.execute('SELECT id,username,display_name,role,active,password_hash IS NOT NULL AS activated FROM manager_accounts ORDER BY id').fetchall()
+            accounts=c.execute('SELECT id,username,display_name,role,active,branch_id,password_hash IS NOT NULL AS activated FROM manager_accounts ORDER BY id').fetchall()
         return page('accounts',accounts=accounts,invitation=invitation,error=error)
 
     @app.post('/admin/accounts/<int:account_id>/disable')

@@ -12,7 +12,7 @@ def post(client, action, **data):
 
 
 def seed(raw):
-    raw.execute("INSERT INTO staff VALUES(2,'Nhân viên cũ',1,1,'baito','hourly',1280,0)")
+    raw.execute("INSERT INTO staff VALUES(2,'Nhân viên cũ',1,1,'baito','hourly',1280,0,1)")
     raw.execute('''INSERT INTO shifts(staff_id,work_date,start,"end",break_min,break_start,break_end,is_kibo)
                    VALUES(2,'2026-11-02','09:00','17:00',0,'12:00','13:00',0)''')
     raw.execute("INSERT INTO fixed_kibo VALUES(2,0,'09:00','17:00')")

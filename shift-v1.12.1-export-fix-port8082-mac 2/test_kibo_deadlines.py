@@ -58,6 +58,7 @@ def env(monkeypatch):
         CREATE TABLE fixed_kibo(staff_id INTEGER,weekday INTEGER,start TEXT,"end" TEXT);
         CREATE TABLE kibo_submissions(staff_id INTEGER,week_start TEXT,submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(staff_id,week_start));
     ''')
+    raw.execute('ALTER TABLE staff ADD COLUMN branch_id INTEGER NOT NULL DEFAULT 1')
     connect = lambda: Connection(raw)
     module.db = connect
     module.datetime = Clock

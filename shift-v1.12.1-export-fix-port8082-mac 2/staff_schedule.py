@@ -58,12 +58,12 @@ def install_staff_schedule(app, connect, linked_staff):
 
     def sync_snapshot(c, week):
         rows = c.execute('''SELECT staff_id,work_date,start,"end",break_start,break_end,
-            break2_start,break2_end,is_kibo FROM shifts WHERE work_date BETWEEN %s AND %s
+            break2_start,break2_end,is_kibo FROM shifts WHERE staff_id IN (SELECT id FROM staff WHERE branch_id=1) AND work_date BETWEEN %s AND %s
             AND start IS NOT NULL AND "end" IS NOT NULL ORDER BY staff_id,work_date''',
             (str(week), str(week + timedelta(days=6)))).fetchall()
         approved = [r for r in rows if not r['is_kibo']]
         ids = {r['staff_id'] for r in approved}
-        staff = c.execute('SELECT id,name,active FROM staff ORDER BY sort_order,id').fetchall()
+        staff = c.execute('SELECT id,name,active FROM staff WHERE branch_id=1 ORDER BY sort_order,id').fetchall()
         content = {'source': 'manager-import', 'people': [{'id': p['id'], 'name': p['name']}
                    for p in staff if p['active'] or p['id'] in ids],
                    'shifts': [{k: v for k, v in r.items() if k != 'is_kibo'} for r in approved]}

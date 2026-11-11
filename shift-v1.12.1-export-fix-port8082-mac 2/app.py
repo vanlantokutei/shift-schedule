@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 from jp_holidays import holiday_context
 from kibo_deadlines import window as kibo_window, install_deadline_route
 import os
+from branches import branch_id, init_branches, install_branches
 import psycopg
 from time import perf_counter
 from psycopg.rows import dict_row
@@ -38,7 +39,7 @@ def schedule_staff(staff, rows):
  return [s for s in staff if s['active'] or s['id'] in recorded_ids]
 
 def active_employee(c, staff_id):
- return c.execute('select id from staff where id=%s and active=1',(staff_id,)).fetchone() is not None
+ return c.execute('select id from staff where id=%s and active=1 and branch_id=%s',(staff_id,branch_id())).fetchone() is not None
 
 def japan_today():
  return datetime.now(ZoneInfo('Asia/Tokyo')).date()
@@ -58,23 +59,23 @@ def hours(r):
  return max(0,hdiff(r['start'],r['end'])-br)
 @app.route('/')
 def index():
- m=monday(request.args['week']) if request.args.get('week') else manager_week();days=[m+timedelta(days=i) for i in range(7)];c=db();all_staff=c.execute('select s.*, (select max(work_date) from shifts where staff_id=s.id) as last_work_date from staff s order by sort_order,id').fetchall();rows=c.execute('select * from shifts where work_date between %s and %s',(str(days[0]),str(days[-1]))).fetchall();# Monthly totals for the month containing the week start.
+ m=monday(request.args['week']) if request.args.get('week') else manager_week();days=[m+timedelta(days=i) for i in range(7)];c=db();all_staff=c.execute('select s.*, (select max(work_date) from shifts where staff_id=s.id) as last_work_date from staff s where s.branch_id=%s order by sort_order,id',(branch_id(),)).fetchall();rows=c.execute('select * from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s',(branch_id(),str(days[0]),str(days[-1]))).fetchall();# Monthly totals for the month containing the week start.
  month_start=m.replace(day=1)
  if m.month==12: month_end=date(m.year+1,1,1)-timedelta(days=1)
  else: month_end=date(m.year,m.month+1,1)-timedelta(days=1)
- month_rows=c.execute('select * from shifts where work_date between %s and %s',(str(month_start),str(month_end))).fetchall()
+ month_rows=c.execute('select * from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s',(branch_id(),str(month_start),str(month_end))).fetchall()
  staff=schedule_staff(all_staff,rows+month_rows)
  active_staff=[s for s in all_staff if s['active']]
  archived_staff=[s for s in all_staff if not s['active']]
  # 希望 status always shows the upcoming week, same week employees see on /kibo.
  kibo_week=monday()+timedelta(days=7); kibo_end=kibo_week+timedelta(days=6)
- kibo_rows=c.execute("select k.staff_id,k.submitted_at,(submitted_at + interval '9 hours') as submitted_at_jst from kibo_submissions k join staff s on s.id=k.staff_id where k.week_start=%s and s.active=1",(str(kibo_week),)).fetchall()
+ kibo_rows=c.execute("select k.staff_id,k.submitted_at,(submitted_at + interval '9 hours') as submitted_at_jst from kibo_submissions k join staff s on s.id=k.staff_id where k.week_start=%s and s.active=1 and s.branch_id=%s",(str(kibo_week),branch_id())).fetchall()
  latest_kibo=max((r['submitted_at'] for r in kibo_rows if r['submitted_at']),default=None)
  # Backward compatibility: 希望 already submitted before submission tracking was added.
- legacy_kibo=c.execute('select distinct staff_id from shifts where work_date between %s and %s and is_kibo=1',(str(kibo_week),str(kibo_end))).fetchall()
+ legacy_kibo=c.execute('select distinct staff_id from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s and is_kibo=1',(branch_id(),str(kibo_week),str(kibo_end))).fetchall()
  kibo_open,kibo_deadline=kibo_window(c,kibo_week)
  kibo_now=datetime.now(ZoneInfo('Asia/Tokyo'))
- week_work=c.execute('select distinct staff_id from shifts where work_date between %s and %s and start IS NOT NULL and "end" IS NOT NULL',(str(kibo_week),str(kibo_end))).fetchall()
+ week_work=c.execute('select distinct staff_id from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s and start IS NOT NULL and "end" IS NOT NULL',(branch_id(),str(kibo_week),str(kibo_end))).fetchall()
  week_off_ids={r['staff_id'] for r in kibo_rows}-{r['staff_id'] for r in week_work}
  c.close();kibo_status={r['staff_id']:r['submitted_at_jst'] for r in kibo_rows}
  sm={(r['staff_id'],r['work_date']):r for r in rows}
@@ -127,8 +128,8 @@ def draft_preview():
  except ValueError: return jsonify(error='Tuần không hợp lệ'),400
  end=week+timedelta(days=6)
  c=db()
- staff=c.execute('select id,name from staff where active=1').fetchall()
- shifts=c.execute('select staff_id,work_date,start,"end",break_start,break_end,is_kibo from shifts where work_date between %s and %s',(str(week),str(end))).fetchall()
+ staff=c.execute('select id,name from staff where active=1 and branch_id=%s',(branch_id(),)).fetchall()
+ shifts=c.execute('select staff_id,work_date,start,"end",break_start,break_end,is_kibo from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s',(branch_id(),str(week),str(end))).fetchall()
  c.close()
  names={s['id']:s['name'] for s in staff}
  hours_by_staff={i:0 for i in names}
@@ -158,7 +159,7 @@ def draft_preview():
 def kibo_live_status():
  week=monday()+timedelta(days=7)
  c=db()
- rows=c.execute("""select s.name, k.submitted_at from kibo_submissions k join staff s on s.id=k.staff_id where k.week_start=%s and s.active=1 order by k.submitted_at desc""",(str(week),)).fetchall()
+ rows=c.execute("""select s.name, k.submitted_at from kibo_submissions k join staff s on s.id=k.staff_id where k.week_start=%s and s.active=1 and s.branch_id=%s order by k.submitted_at desc""",(str(week),branch_id())).fetchall()
  c.close()
  return jsonify(week=str(week),count=len(rows),latest=str(rows[0]['submitted_at']) if rows else '',names=[r['name'] for r in rows])
 
@@ -171,7 +172,7 @@ def month_view():
  next_first=date(y+1,1,1) if mo==12 else date(y,mo+1,1)
  last=next_first-timedelta(days=1); days=[first+timedelta(days=i) for i in range((last-first).days+1)]
  prev=(first-timedelta(days=1)).replace(day=1); nxt=next_first
- c=db(); all_staff=c.execute('select * from staff order by sort_order,id').fetchall(); rows=c.execute('select * from shifts where work_date between %s and %s',(str(first),str(last))).fetchall(); c.close()
+ c=db(); all_staff=c.execute('select * from staff where branch_id=%s order by sort_order,id',(branch_id(),)).fetchall(); rows=c.execute('select * from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s',(branch_id(),str(first),str(last))).fetchall(); c.close()
  staff=schedule_staff(all_staff,rows)
  sm={(r['staff_id'],r['work_date']):r for r in rows}; totals={s['id']:sum(hours(sm.get((s['id'],str(d)))) for d in days) for s in staff}
  return render_template('month.html',**holiday_context(days),staff=staff,days=days,sm=sm,totals=totals,year=y,month=mo,prev_year=prev.year,prev_month=prev.month,next_year=nxt.year,next_month=nxt.month)
@@ -257,7 +258,7 @@ def kibo_fixed_delete():
 def kibo():
  kibo_t0=perf_counter()
  c=db();kibo_db_connect_ms=(perf_counter()-kibo_t0)*1000
- staff=c.execute('select id,name from staff where active=1 order by sort_order,id').fetchall()
+ staff=c.execute('select id,name from staff where active=1 and branch_id=%s order by sort_order,id',(branch_id(),)).fetchall()
  message=None; error=None; submitted=0; locked=0
  week_off=request.method=='POST' and request.form.get('week_off')=='1'
  raw_week=request.values.get('week')
@@ -333,12 +334,12 @@ def staff_action():
  if a in {'rename','update'} and not active_employee(c,x.get('id')):
   c.close();return jsonify(ok=False,error='Hãy khôi phục nhân viên trước khi chỉnh sửa.'),409
  if a=='add' and x.get('name','').strip():
-  mx=c.execute('select coalesce(max(sort_order),-1)+1 n from staff').fetchone()['n'];sid=c.execute('insert into staff(name,sort_order) values(%s,%s) returning id',(x['name'].strip(),mx)).fetchone()['id']
+  mx=c.execute('select coalesce(max(sort_order),-1)+1 n from staff where branch_id=%s',(branch_id(),)).fetchone()['n'];sid=c.execute('insert into staff(name,sort_order,branch_id) values(%s,%s,%s) returning id',(x['name'].strip(),mx,branch_id())).fetchone()['id']
  elif a=='rename' and x.get('name','').strip(): c.execute('update staff set name=%s where id=%s',(x['name'].strip(),x['id']));sid=x['id']
  elif a in {'archive','delete','restore'}:
   # Legacy delete requests also archive; never remove shifts, wages or fixed Kibo.
   sid=x.get('id')
-  if not c.execute('select id from staff where id=%s',(sid,)).fetchone():
+  if not c.execute('select id from staff where id=%s and branch_id=%s',(sid,branch_id())).fetchone():
    c.close();return jsonify(ok=False,error='Không tìm thấy nhân viên.'),404
   c.execute('update staff set active=%s where id=%s',(1 if a=='restore' else 0,sid))
  elif a=='update':
@@ -360,13 +361,13 @@ def move_week():
  if src==target: return jsonify(ok=True,target=str(target),moved=0)
  c=db()
  src_end=src+timedelta(days=6); target_end=target+timedelta(days=6)
- source_rows=c.execute('select * from shifts where work_date between %s and %s',(str(src),str(src_end))).fetchall()
- conflicts=c.execute('select count(*) n from shifts where work_date between %s and %s',(str(target),str(target_end))).fetchone()['n']
+ source_rows=c.execute('select * from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s',(branch_id(),str(src),str(src_end))).fetchall()
+ conflicts=c.execute('select count(*) n from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s',(branch_id(),str(target),str(target_end))).fetchone()['n']
  if conflicts and not x.get('force'):
   c.close(); return jsonify(ok=False,conflict=True,count=conflicts,target=str(target)),409
  try:
   c.execute('begin')
-  if conflicts: c.execute('delete from shifts where work_date between %s and %s',(str(target),str(target_end)))
+  if conflicts: c.execute('delete from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s',(branch_id(),str(target),str(target_end)))
   # Move through temporary dates first so UNIQUE(staff_id,work_date) can never collide.
   temp_base=date(2099,1,4)
   moved=[]
@@ -385,8 +386,8 @@ def move_week():
 def backup_csv():
  import csv, io
  c=db()
- staff=c.execute('select id,name,active,staff_type,pay_type,hourly_rate,monthly_salary,sort_order from staff order by sort_order,id').fetchall()
- shifts=c.execute('select id,staff_id,work_date,start,"end",break_start,break_end,break_min,break2_start,break2_end from shifts order by work_date,staff_id').fetchall()
+ staff=c.execute('select id,name,active,staff_type,pay_type,hourly_rate,monthly_salary,sort_order from staff where branch_id=%s order by sort_order,id',(branch_id(),)).fetchall()
+ shifts=c.execute('select id,staff_id,work_date,start,"end",break_start,break_end,break_min,break2_start,break2_end from shifts where staff_id in (select id from staff where branch_id=%s) order by work_date,staff_id',(branch_id(),)).fetchall()
  c.close()
  out=io.StringIO(); w=csv.writer(out)
  w.writerow(['type','id','staff_id/name','work_date/active','start/staff_type','end/pay_type','break_start/hourly_rate','break_end/monthly_salary','break_min/sort_order','break2_start','break2_end'])
@@ -409,9 +410,9 @@ def restore_backup():
    c.execute('begin')
    for r in staff_rows:
     oldid=int(r[1]); name=r[2]; active=int(r[3] or 1); stype=r[4] or 'baito'; ptype=r[5] or 'hourly'; hourly=int(r[6] or 0); monthly=int(r[7] or 0); order=int(r[8] or 0)
-    found=c.execute('select id from staff where name=%s order by active desc,id limit 1',(name,)).fetchone()
+    found=c.execute('select id from staff where name=%s and branch_id=%s order by active desc,id limit 1',(name,branch_id())).fetchone()
     if found: nid=found['id']; c.execute('update staff set active=%s,staff_type=%s,pay_type=%s,hourly_rate=%s,monthly_salary=%s,sort_order=%s where id=%s',(active,stype,ptype,hourly,monthly,order,nid))
-    else: nid=c.execute('insert into staff(name,active,staff_type,pay_type,hourly_rate,monthly_salary,sort_order) values(%s,%s,%s,%s,%s,%s,%s) returning id',(name,active,stype,ptype,hourly,monthly,order)).fetchone()['id']
+    else: nid=c.execute('insert into staff(name,active,staff_type,pay_type,hourly_rate,monthly_salary,sort_order,branch_id) values(%s,%s,%s,%s,%s,%s,%s,%s) returning id',(name,active,stype,ptype,hourly,monthly,order,branch_id())).fetchone()['id']
     idmap[oldid]=nid
    for r in shift_rows:
     nid=idmap.get(int(r[2]));
@@ -428,13 +429,15 @@ def restore_backup():
 def staff_reorder():
  x=request.get_json() or {}; order=x.get('order') or []
  c=db()
- for i,sid in enumerate(order): c.execute('update staff set sort_order=%s where id=%s',(i,int(sid)))
+ for i,sid in enumerate(order): c.execute('update staff set sort_order=%s where id=%s and branch_id=%s',(i,int(sid),branch_id()))
  c.commit();c.close();return jsonify(ok=True)
 
 install_deadline_route(app, db)
 init()
 from manager_auth import install_manager_auth
 install_manager_auth(app, db)
+init_branches(db)
+install_branches(app, db)
 from line_schedule import install_line_schedule
 install_line_schedule(app, db)
 if __name__=='__main__':app.run(host='0.0.0.0',port=int(os.environ.get('PORT',8082)),debug=False)

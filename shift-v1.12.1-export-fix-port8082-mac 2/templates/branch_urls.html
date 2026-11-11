@@ -1,0 +1,7 @@
+<script>
+// Keep the selected branch on links, forms and background saves, including tabs.
+(()=>{const branch={{current_branch.id|tojson}},original=window.fetch.bind(window);
+const scoped=value=>{const u=new URL(value,location.href);if(u.origin===location.origin&&!u.pathname.startsWith('/static/')&&!u.searchParams.has('branch'))u.searchParams.set('branch',branch);return u;};
+window.fetch=(input,options)=>original(input instanceof Request?new Request(scoped(input.url),input):scoped(input),options);
+document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('a[href]').forEach(a=>{if(a.getAttribute('href').startsWith('#'))return;const u=scoped(a.href);if(u.origin===location.origin)a.href=u.href;});document.querySelectorAll('form').forEach(f=>{if(!f.querySelector('[name="branch"]')){const x=document.createElement('input');x.type='hidden';x.name='branch';x.value=branch;f.appendChild(x);}});});})();
+</script>
