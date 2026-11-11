@@ -6,6 +6,13 @@ def branch_id():
     return getattr(g, 'branch', {}).get('id', 1) if has_request_context() else 1
 
 
+def full_day_hours(connection):
+    if branch_id()==1:
+        return False
+    row=connection.execute('SELECT full_day_hours FROM branch_kibo_settings WHERE branch_id=%s', (branch_id(),)).fetchone()
+    return bool(row and row['full_day_hours'])
+
+
 def init_branches(connect):
     with connect() as c:
         c.execute('SELECT pg_advisory_xact_lock(72905433)')
@@ -24,10 +31,13 @@ def init_branches(connect):
         c.execute('''CREATE TABLE IF NOT EXISTS branch_kibo_settings (
             branch_id INTEGER PRIMARY KEY REFERENCES branches(id),
             always_open INTEGER NOT NULL DEFAULT 0 CHECK(always_open IN (0,1)))''')
-        # Seed this store's setting once; other branches retain their own deadlines.
-        c.execute('''INSERT INTO branch_kibo_settings(branch_id,always_open)
-            SELECT id,1 FROM branches WHERE id=2 AND name=%s
+        c.execute('ALTER TABLE branch_kibo_settings ADD COLUMN IF NOT EXISTS full_day_hours INTEGER NOT NULL DEFAULT 0')
+        c.execute('''INSERT INTO branch_kibo_settings(branch_id,always_open,full_day_hours)
+            SELECT id,0,1 FROM branches WHERE id=2 AND name=%s
             ON CONFLICT(branch_id) DO NOTHING''', ('デリメシ店',))
+        # Correct the earlier deadline misunderstanding once, preserving future settings.
+        c.execute('''UPDATE branch_kibo_settings SET always_open=0,full_day_hours=1
+            WHERE branch_id=2 AND full_day_hours=0''')
 
 
 def install_branches(app, connect):

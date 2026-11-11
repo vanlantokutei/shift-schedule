@@ -27,6 +27,7 @@
   <button type="submit">Hiển thị tuần</button>
  </form>
  {% if error and not kibo_closed %}<div class="notice error">⚠ {{error}}</div>{% endif %}
+ {% if kibo_full_day %}<p class="notice">Quán mở 24/24 · Chọn giờ theo bước 30 phút. Ví dụ: 22:00–06:00 là ca đến 06:00 ngày hôm sau.</p>{% endif %}
  <form method="post" action="/kibo" class="week-form" id="kibo-form">
   <fieldset {% if kibo_closed %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
   <input type="hidden" name="staff_id" value="{{selected_id}}"><input type="hidden" name="week" value="{{days[0]}}"><input type="hidden" name="week_off" value="0">
@@ -45,7 +46,7 @@
   {% for d in days %}{% set r=existing.get(d|string) %}<div class="day-card {% if r and not r.is_kibo %}locked{% endif %}">
    <div class="day-name"><b>{{['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật'][loop.index0]}}</b><span>{{d.strftime('%d/%m')}}</span></div>
    {% if r and not r.is_kibo %}<div class="fixed">🔒 Quản lý đã chốt: {{r.start}}–{{r.end}}</div>
-   {% else %}<div class="times"><label>Bắt đầu<select name="start_{{loop.index0}}"><option value="">--:--</option>{% for h in range(7,23) %}{% for m in [0,30] %}{% set t='%02d:%02d'|format(h,m) %}<option value="{{t}}" {% if r and r.start==t %}selected{% endif %}>{{t}}</option>{% endfor %}{% endfor %}</select></label><span>–</span><label>Kết thúc<select name="end_{{loop.index0}}"><option value="">--:--</option>{% for h in range(7,23) %}{% for m in [0,30] %}{% set t='%02d:%02d'|format(h,m) %}<option value="{{t}}" {% if r and r.end==t %}selected{% endif %}>{{t}}</option>{% endfor %}{% endfor %}</select></label></div>{% endif %}
+   {% else %}<div class="times"><label>Bắt đầu<select name="start_{{loop.index0}}"><option value="">--:--</option>{% for h in range(0 if kibo_full_day else 7,24 if kibo_full_day else 23) %}{% for m in [0,30] %}{% set t='%02d:%02d'|format(h,m) %}<option value="{{t}}" {% if r and r.start==t %}selected{% endif %}>{{t}}</option>{% endfor %}{% endfor %}</select></label><span>–</span><label>Kết thúc<select name="end_{{loop.index0}}"><option value="">--:--</option>{% for h in range(0 if kibo_full_day else 7,24 if kibo_full_day else 23) %}{% for m in [0,30] %}{% set t='%02d:%02d'|format(h,m) %}<option value="{{t}}" {% if r and r.end==t %}selected{% endif %}>{{t}}</option>{% endfor %}{% endfor %}</select></label></div>{% endif %}
   </div>{% endfor %}
   {% if not kibo_closed %}<button class="submit" type="submit" form="kibo-form">Kiểm tra và gửi 希望シフト</button>{% endif %}
   </fieldset>
@@ -90,11 +91,11 @@ if(kiboForm)kiboForm.addEventListener('submit',event=>{
   const a=kiboForm.elements['start_'+i],b=kiboForm.elements['end_'+i];
   if(!a||!b)continue;
   const start=weekOff?'':a.value,end=weekOff?'':b.value;
-  if(Boolean(start)!==Boolean(end)||(start&&end<=start)){invalid=true;break}
+  if(Boolean(start)!==Boolean(end)||(start&&(end===start||(!{{kibo_full_day|tojson}}&&end<start)))){invalid=true;break}
   const day=[...a.closest('.day-card').querySelector('.day-name').children].map(el=>el.textContent.trim()).join(' · ');
-  lines.push(day+' — '+(start?start+'–'+end:(weekOff?'Nghỉ — không đăng ký ca':'Không đăng ký')));
+  lines.push(day+' — '+(start?start+'–'+end+(end<start?' (ngày hôm sau)':''):(weekOff?'Nghỉ — không đăng ký ca':'Không đăng ký')));
  }
- if(invalid){alert('Vui lòng nhập đủ giờ bắt đầu và kết thúc; giờ kết thúc phải sau giờ bắt đầu.');return}
+ if(invalid){alert('Vui lòng nhập đủ giờ bắt đầu và kết thúc; giờ làm không hợp lệ hoặc giờ bắt đầu trùng giờ kết thúc.');return}
  const summary=document.getElementById('confirm-summary');
  summary.replaceChildren();
  const title=document.createElement('b');title.textContent=kiboForm.querySelector('.week-title').textContent.trim();summary.append(title);
