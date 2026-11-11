@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify, Response
 from datetime import date, timedelta, datetime
 from zoneinfo import ZoneInfo
 from jp_holidays import holiday_context
-from kibo_deadlines import window as kibo_window, install_deadline_route
+from kibo_deadlines import window as kibo_window, always_open as kibo_always_open, install_deadline_route
 import os
 from branches import branch_id, init_branches, install_branches
 import psycopg
@@ -73,6 +73,7 @@ def index():
  latest_kibo=max((r['submitted_at'] for r in kibo_rows if r['submitted_at']),default=None)
  # Backward compatibility: 希望 already submitted before submission tracking was added.
  legacy_kibo=c.execute('select distinct staff_id from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s and is_kibo=1',(branch_id(),str(kibo_week),str(kibo_end))).fetchall()
+ kibo_unlimited=kibo_always_open(c)
  kibo_open,kibo_deadline=kibo_window(c,kibo_week)
  kibo_now=datetime.now(ZoneInfo('Asia/Tokyo'))
  week_work=c.execute('select distinct staff_id from shifts where staff_id in (select id from staff where branch_id=%s) and work_date between %s and %s and start IS NOT NULL and "end" IS NOT NULL',(branch_id(),str(kibo_week),str(kibo_end))).fetchall()
@@ -85,7 +86,7 @@ def index():
  baito_monthly_pay=sum(round(monthly_totals[s['id']]*(s['hourly_rate'] or 0)) for s in staff if s['staff_type']=='baito')
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
- return render_template('index.html',**holiday_context(days),staff=staff,active_staff=active_staff,archived_staff=archived_staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,week_off_ids=week_off_ids,kibo_deadline=kibo_deadline,kibo_closed=not(kibo_open<=kibo_now<kibo_deadline),kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+ return render_template('index.html',**holiday_context(days),staff=staff,active_staff=active_staff,archived_staff=archived_staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,week_off_ids=week_off_ids,kibo_deadline=kibo_deadline,kibo_unlimited=kibo_unlimited,kibo_closed=not kibo_unlimited and not(kibo_open<=kibo_now<kibo_deadline),kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
 def suggest_draft_breaks(draft,existing):
  """Preview-only breaks, staggered in 15-minute increments."""
  def mins(t):return int(t[:2])*60+int(t[3:])
@@ -265,10 +266,11 @@ def kibo():
  try:m=monday(raw_week) if raw_week else monday()+timedelta(days=7)
  except Exception:m=monday()+timedelta(days=7)
  days=[m+timedelta(days=i) for i in range(7)]
+ kibo_unlimited=kibo_always_open(c)
  kibo_open,kibo_deadline=kibo_window(c,m)
  kibo_now=datetime.now(ZoneInfo('Asia/Tokyo'))
- kibo_closed=not (kibo_open<=kibo_now<kibo_deadline)
- kibo_before_open=kibo_now<kibo_open
+ kibo_closed=not kibo_unlimited and not (kibo_open<=kibo_now<kibo_deadline)
+ kibo_before_open=not kibo_unlimited and kibo_now<kibo_open
  open_text=kibo_open.strftime('%d/%m/%Y lúc %H:%M')
  deadline_text=kibo_deadline.strftime('%d/%m/%Y lúc %H:%M')
  try:selected_id=int(request.values.get('staff_id') or (staff[0]['id'] if staff else 0))
@@ -327,7 +329,7 @@ def kibo():
   d=days[fr['weekday']]; key=str(d)
   if key not in existing:existing[key]={'work_date':key,'start':fr['start'],'end':fr['end'],'is_kibo':1,'prefill_fixed':True}
  if request.method=='POST':app.logger.info('KIBO_REQUEST_METRICS total_ms=%.0f db_connect_ms=%.0f',(perf_counter()-kibo_t0)*1000,kibo_db_connect_ms)
- return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error,week_off_registered=week_off_registered,has_locked_shifts=has_locked_shifts,kibo_closed=kibo_closed,kibo_before_open=kibo_before_open,open_text=open_text,deadline_text=deadline_text,kibo_open_iso=kibo_open.isoformat(),kibo_deadline_iso=kibo_deadline.isoformat())
+ return render_template('kibo.html',staff=staff,selected_id=selected_id,days=days,existing=existing,message=message,error=error,week_off_registered=week_off_registered,has_locked_shifts=has_locked_shifts,kibo_unlimited=kibo_unlimited,kibo_closed=kibo_closed,kibo_before_open=kibo_before_open,open_text=open_text,deadline_text=deadline_text,kibo_open_iso=kibo_open.isoformat(),kibo_deadline_iso=kibo_deadline.isoformat())
 @app.post('/staff')
 def staff_action():
  x=request.get_json() or {};c=db();a=x.get('action')

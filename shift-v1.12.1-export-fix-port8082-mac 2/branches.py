@@ -21,6 +21,14 @@ def init_branches(connect):
             branch_id INTEGER NOT NULL REFERENCES branches(id), week_start TEXT NOT NULL,
             deadline TIMESTAMPTZ NOT NULL, PRIMARY KEY(branch_id,week_start))''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS branch_kibo_settings (
+            branch_id INTEGER PRIMARY KEY REFERENCES branches(id),
+            always_open INTEGER NOT NULL DEFAULT 0 CHECK(always_open IN (0,1)))''')
+        # Seed this store's setting once; other branches retain their own deadlines.
+        c.execute('''INSERT INTO branch_kibo_settings(branch_id,always_open)
+            SELECT id,1 FROM branches WHERE id=2 AND name=%s
+            ON CONFLICT(branch_id) DO NOTHING''', ('デリメシ店',))
+
 
 def install_branches(app, connect):
     @app.before_request

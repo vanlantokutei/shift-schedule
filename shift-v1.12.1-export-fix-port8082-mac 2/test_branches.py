@@ -12,6 +12,7 @@ def tenants(env):
     raw.executescript('''
         CREATE TABLE branches(id INTEGER PRIMARY KEY,name TEXT UNIQUE NOT NULL);
         INSERT INTO branches VALUES(1,'ベト屋築地店'),(2,'デリメシ店');
+        CREATE TABLE branch_kibo_settings(branch_id INTEGER PRIMARY KEY,always_open INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE branch_kibo_deadlines(branch_id INTEGER,week_start TEXT,deadline TEXT,PRIMARY KEY(branch_id,week_start));
         INSERT INTO staff VALUES(2,'Deli Staff',1,0,'baito','hourly',1400,0,2);
         INSERT INTO shifts VALUES(1,'2026-11-09','08:00','12:00',0,NULL,NULL,NULL,NULL,0);

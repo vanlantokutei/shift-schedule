@@ -7,6 +7,13 @@ from branches import branch_id
 JST = ZoneInfo('Asia/Tokyo')
 
 
+def always_open(connection):
+    if branch_id()==1:
+        return False
+    row=connection.execute('SELECT always_open FROM branch_kibo_settings WHERE branch_id=%s', (branch_id(),)).fetchone()
+    return bool(row and row['always_open'])
+
+
 def window(connection, week):
     opens = datetime.combine(week - timedelta(days=7), datetime.min.time(), JST)
     deadline = opens + timedelta(days=3, hours=22)
@@ -34,6 +41,8 @@ def install_deadline_route(app, connect):
             return jsonify(ok=False, error='Vui lòng chọn ngày và giờ gia hạn hợp lệ.'), 400
         now = datetime.now(JST)
         with connect() as connection:
+            if always_open(connection):
+                return jsonify(ok=False, error='Chi nhánh này đang mở Kibo 24/24, không cần gia hạn.'),409
             # Serialize concurrent extensions for the same week.
             connection.execute('SELECT pg_advisory_xact_lock(%s)', (week.toordinal(),))
             opens, current = window(connection, week)
