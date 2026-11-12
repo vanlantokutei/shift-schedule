@@ -78,7 +78,9 @@ def install_branches(app, connect):
 
     @app.context_processor
     def branch_context():
-        return {'current_branch': getattr(g, 'branch', {'id': 1, 'name': 'ベト屋築地店'})}
+        from line_branches import BOT_IDS
+        return {'current_branch': getattr(g, 'branch', {'id': 1, 'name': 'ベト屋築地店'}),
+                'line_bot_id': BOT_IDS.get(branch_id(), '')}
 
     @app.route('/admin/branches', methods=['GET', 'POST'])
     def branch_directory():
