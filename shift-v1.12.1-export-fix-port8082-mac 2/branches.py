@@ -1,9 +1,11 @@
 """Branch selection and owner-managed branch directory."""
 from flask import abort, g, has_request_context, redirect, render_template, request, session, url_for
+from urllib.parse import parse_qs, urlsplit
 
 
 def branch_id():
-    return getattr(g, 'branch', {}).get('id', 1) if has_request_context() else 1
+    from line_branches import branch_number
+    return branch_number()
 
 
 def full_day_hours(connection):
@@ -47,6 +49,11 @@ def install_branches(app, connect):
             return
         manager = getattr(g, 'manager', None)
         raw = request.values.get('branch')
+        if raw is None and request.endpoint == 'line_kibo_entry':
+            # LIFF sends appended link parameters inside liff.state on the first
+            # redirect. Resolve the store before rendering/initializing its UI.
+            state = request.args.get('liff.state', '')
+            raw = parse_qs(urlsplit(state).query).get('branch', [None])[0]
         if raw is None:
             raw = session.get('branch_id', 1) if manager else 1
         try:
@@ -65,7 +72,7 @@ def install_branches(app, connect):
         g.branch = dict(row)
         # Existing LINE credentials, group and publications belong to Tsukiji.
         # Never expose that data or send it from another branch's page.
-        if selected != 1 and (request.path.startswith(('/line/', '/admin/line', '/staff/'))
+        if selected != 1 and (not app.extensions.get('line_branch_support') or selected not in (1,2)) and (request.path.startswith(('/line/', '/admin/line', '/staff/'))
                               or request.endpoint == 'line_kibo_entry'):
             abort(409, description='LINE của chi nhánh này chưa được cấu hình. Hãy dùng trang lịch và đăng ký Kibo của chi nhánh.')
 

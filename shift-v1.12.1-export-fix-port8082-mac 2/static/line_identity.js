@@ -7,7 +7,8 @@
   const continueButton=document.getElementById('lineIdentityContinue');
   let token=null, current=null;
   let schedule=false, mine=false;
-  const next=staff => schedule ? '/staff/schedule'+(mine?'?mine=1':'') : '/kibo?'+new URLSearchParams({staff_id:String(staff.id),week:root.dataset.week});
+  const scoped=value=>{const u=new URL(value,location.origin);u.searchParams.set('branch',root.dataset.branch);return u.href;};
+  const next=staff => scoped( schedule ? '/staff/schedule'+(mine?'?mine=1':'') : '/kibo?'+new URLSearchParams({staff_id:String(staff.id),week:root.dataset.week}));
   async function api(path,extra={}) {
     const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id_token:token,...extra})});
@@ -37,7 +38,7 @@
       if(!liff.isLoggedIn()){
         status.textContent='Đăng nhập LINE để nhớ tên của bạn.';
         const login=document.createElement('button');login.type='button';login.textContent='Đăng nhập bằng LINE';
-        login.onclick=()=>liff.login({redirectUri:location.origin+'/kibo/line?'+new URLSearchParams({week:root.dataset.week,...(schedule?{view:'schedule',mine:mine?'1':'0'}:{})})});
+        login.onclick=()=>liff.login({redirectUri:location.origin+'/kibo/line?'+new URLSearchParams({branch:root.dataset.branch,week:root.dataset.week,...(schedule?{view:'schedule',mine:mine?'1':'0'}:{})})});
         root.prepend(login);return;
       }
       token=liff.getIDToken();

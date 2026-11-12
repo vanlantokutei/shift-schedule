@@ -1,5 +1,6 @@
 """Betoya LINE cards; all dates and links come from the live Kibo window."""
 from datetime import timedelta
+from line_branches import branch_name
 PHOTO = 'https://shift-schedule-1fk2.onrender.com/static/line/pho-betoya.jpg'
 GREEN = '#075B3B'
 CREAM = '#FAF8F2'
@@ -22,7 +23,7 @@ def card(alt, title, text, signup_url):
              'aspectMode': 'fit', 'position': 'absolute', 'offsetTop': '10px',
              'offsetEnd': '12px'}]},
         'body': {'type': 'box', 'layout': 'vertical', 'spacing': 'md', 'paddingAll': '18px', 'contents': [
-            {'type': 'text', 'text': 'ベト屋築地店', 'color': GREEN, 'size': 'xs', 'weight': 'bold'},
+            {'type': 'text', 'text': branch_name(), 'color': GREEN, 'size': 'xs', 'weight': 'bold'},
             {'type': 'text', 'text': title, 'weight': 'bold', 'size': 'xl', 'wrap': True, 'color': '#20342B'},
             {'type': 'text', 'text': text, 'size': 'sm', 'wrap': True, 'color': '#52645A'}]},
         'footer': {'type': 'box', 'layout': 'vertical', 'spacing': 'sm', 'contents': [

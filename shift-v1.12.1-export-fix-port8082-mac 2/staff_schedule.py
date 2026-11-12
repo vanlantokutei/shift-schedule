@@ -7,6 +7,7 @@ import json
 import time
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
+from line_branches import branch_number, branch_name, branch_url
 from flask import abort, g, redirect, render_template, request, Response, session
 
 
@@ -16,7 +17,7 @@ def install_staff_schedule(app, connect, linked_staff):
         person = linked_staff(c, uid) if uid and session.get('line_staff_exp', 0) > time.time() else None
         if person or getattr(g, 'manager', None):
             return dict(person) if person else None, None
-        return None, redirect('/kibo/line?' + urlencode({'view': 'schedule', 'mine': request.args.get('mine', '0')}))
+        return None, redirect(branch_url('/kibo/line?' + urlencode({'view': 'schedule', 'mine': request.args.get('mine', '0')})))
 
     def can_manage(c):
         if getattr(g, 'manager', None):
@@ -32,7 +33,7 @@ def install_staff_schedule(app, connect, linked_staff):
                 abort(403, description='Tài khoản này không có nút quản lý lịch.')
         # LINE identity only controls visibility. Editing always requires the
         # existing manager password/session and the existing CSRF protection.
-        return redirect('/' if getattr(g, 'manager', None) else '/admin/login')
+        return redirect(branch_url('/' if getattr(g, 'manager', None) else '/admin/login'))
 
     def selected_week():
         value = request.args.get('week')
@@ -57,13 +58,13 @@ def install_staff_schedule(app, connect, linked_staff):
             ('published:' + str(week) + ':%',)).fetchone()
 
     def sync_snapshot(c, week):
-        rows = c.execute('''SELECT staff_id,work_date,start,"end",break_start,break_end,
-            break2_start,break2_end,is_kibo FROM shifts WHERE staff_id IN (SELECT id FROM staff WHERE branch_id=1) AND work_date BETWEEN %s AND %s
+        rows = c.execute(f'''SELECT staff_id,work_date,start,"end",break_start,break_end,
+            break2_start,break2_end,is_kibo FROM shifts WHERE staff_id IN (SELECT id FROM staff WHERE branch_id={branch_number()}) AND work_date BETWEEN %s AND %s
             AND start IS NOT NULL AND "end" IS NOT NULL ORDER BY staff_id,work_date''',
             (str(week), str(week + timedelta(days=6)))).fetchall()
         approved = [r for r in rows if not r['is_kibo']]
         ids = {r['staff_id'] for r in approved}
-        staff = c.execute('SELECT id,name,active FROM staff WHERE branch_id=1 ORDER BY sort_order,id').fetchall()
+        staff = c.execute(f'SELECT id,name,active FROM staff WHERE branch_id={branch_number()} ORDER BY sort_order,id').fetchall()
         content = {'source': 'manager-import', 'people': [{'id': p['id'], 'name': p['name']}
                    for p in staff if p['active'] or p['id'] in ids],
                    'shifts': [{k: v for k, v in r.items() if k != 'is_kibo'} for r in approved]}

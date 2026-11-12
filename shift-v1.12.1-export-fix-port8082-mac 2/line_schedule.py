@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 import uuid
 
 from cryptography.fernet import Fernet
+from line_branches import branch_number, branch_name, branch_url, branch_scope, BOT_IDS
 from flask import Response, abort, g, jsonify, render_template, request, session
 from PIL import Image, ImageDraw, ImageFont
 from kibo_deadlines import window as kibo_window
@@ -39,12 +40,12 @@ def registration_reminder(connection, current_week, now, test=False, signup_url=
         return None
     label = 'GỬI THỬ · ' if test else ''
     return (
-        f'{label}📢 ベト屋築地店 — Nhắc đăng ký 希望シフト\n\n'
+        f'{label}📢 {branch_name()} — Nhắc đăng ký 希望シフト\n\n'
         f'Mọi người vui lòng đăng ký lịch rảnh cho tuần '
         f'{target:%d/%m}–{target + timedelta(days=6):%d/%m/%Y}.\n'
         f'⏰ Hạn đăng ký: {deadline:%d/%m/%Y lúc %H:%M} (giờ Nhật).\n\n'
         f'📅 Đăng ký tại đây:\n'
-        f'{signup_url or "https://shift-schedule-1fk2.onrender.com/kibo?week=" + target.isoformat()}\n\n'
+        f'{signup_url or branch_url("https://shift-schedule-1fk2.onrender.com/kibo?week=" + target.isoformat())}\n\n'
         'Cảm ơn mọi người!'
     )
 
@@ -54,7 +55,7 @@ def publication_text(week, updated=False):
     label = 'Lịch cập nhật' if updated else 'Lịch đã chốt'
     intro = ('Lịch làm việc đã được điều chỉnh. Đây là bản mới nhất, thay cho bản đã gửi trước.'
              if updated else 'Lịch làm việc tuần này đã được chốt.')
-    return (f'📅 Betoya Tsukiji — {label}\n'
+    return (f'📅 {"Betoya Tsukiji" if branch_number()==1 else branch_name()} — {label}\n'
             f'Tuần {week:%d/%m}–{week + timedelta(days=6):%d/%m/%Y}\n\n'
             f'{intro}\n'
             'Mọi người vui lòng kiểm tra ca làm và giờ nghỉ trong ảnh đính kèm.\n'
@@ -78,11 +79,11 @@ def publish_week(value):
 
 
 def publication_snapshot(connection, week, group_id):
-    rows = connection.execute('''SELECT staff_id,work_date,start,"end",break_start,break_end,
-        break2_start,break2_end,is_kibo FROM shifts WHERE staff_id IN (SELECT id FROM staff WHERE branch_id=1) AND work_date BETWEEN %s AND %s
+    rows = connection.execute(f'''SELECT staff_id,work_date,start,"end",break_start,break_end,
+        break2_start,break2_end,is_kibo FROM shifts WHERE staff_id IN (SELECT id FROM staff WHERE branch_id={branch_number()}) AND work_date BETWEEN %s AND %s
         AND start IS NOT NULL AND "end" IS NOT NULL ORDER BY staff_id,work_date''',
         (str(week), str(week + timedelta(days=6)))).fetchall()
-    people = connection.execute('SELECT id,name,active FROM staff WHERE branch_id=1 ORDER BY sort_order,id').fetchall()
+    people = connection.execute(f'SELECT id,name,active FROM staff WHERE branch_id={branch_number()} ORDER BY sort_order,id').fetchall()
     ids = {r['staff_id'] for r in rows}
     people = [p for p in people if p['active'] or p['id'] in ids]
     # Wish approval does not change the displayed image, so it must not change
@@ -129,7 +130,7 @@ def schedule_image(week, staff, rows):
     draw = ImageDraw.Draw(image)
     font_path = str(Path(__file__).with_name('fonts') / 'DejaVuSans.ttf')
     title_font, font, small = [ImageFont.truetype(font_path, n) for n in (32, 23, 18)]
-    draw.text((24, 15), 'BETOYA TSUKIJI - LỊCH LÀM VIỆC', font=title_font, fill='#10764e')
+    draw.text((24, 15), ('BETOYA TSUKIJI' if branch_number()==1 else 'DERIMESHI') + ' - LỊCH LÀM VIỆC', font=title_font, fill='#10764e')
     draw.text((24, 63), f'{week:%d/%m/%Y} - {days[-1]:%d/%m/%Y}', font=font, fill='#334155')
     draw.rectangle((0, 110, width, 175), fill='#edf5ef')
     draw.text((16, 128), 'Nhân viên', font=font, fill='#334155')
@@ -149,7 +150,7 @@ def schedule_image(week, staff, rows):
             x = name_width + i * col_width
             r = cells.get((person['id'], str(d)))
             draw.rectangle((x, y, x + col_width, y + row_height), outline='#dce5df')
-            draw.text((x + 12, y + 8), f'{r["start"]}–{r["end"]}' if r else '—', font=font, fill='#263a31')
+            draw.text((x + 12, y + 8), (f'{r["start"]}–{r["end"]}' + (' (+1)' if r['end']<r['start'] else '')) if r else '—', font=font, fill='#263a31')
             if r:
                 for j, (left, right) in enumerate([('break_start', 'break_end'), ('break2_start', 'break2_end')]):
                     if r.get(left) and r.get(right):
@@ -232,7 +233,7 @@ class LineSchedule:
                               ('Đăng ký 希望シフト cho tuần tới chưa mở hoặc đã đóng. Chưa gửi nhắc.',))
                     return 'closed'
                 image_id = secrets.token_urlsafe(32)
-                signup_url = signup_url or 'https://shift-schedule-1fk2.onrender.com/kibo?week=' + str(week + timedelta(days=7))
+                signup_url = signup_url or branch_url('https://shift-schedule-1fk2.onrender.com/kibo?week=' + str(week + timedelta(days=7)))
                 payload = {'to': config['group_id'], 'messages': [reminder_card(text, signup_url, week + timedelta(days=7), kibo_window(c, week + timedelta(days=7))[1])]}
                 c.execute('''INSERT INTO line_schedule_deliveries
                     (week_start,image_id,png,payload,retry_key,next_attempt,expires_at)
@@ -262,7 +263,12 @@ class LineSchedule:
     def loop(self):
         while True:
             try:
-                self.tick()
+                for branch in self.connect.branches():
+                    with branch_scope(branch):
+                        try:
+                            self.tick()
+                        except Exception:
+                            self.app.logger.error('LINE branch delivery check failed; will retry.')
             except Exception:
                 # Do not log payloads, group messages or credentials.
                 self.app.logger.error('LINE weekly delivery check failed; will retry.')
@@ -303,7 +309,7 @@ class LineSchedule:
                     WHERE week_start LIKE %s AND accepted_at IS NOT NULL LIMIT 1''',
                     ('published:' + str(week) + ':%',)).fetchone()
                 image_id = secrets.token_urlsafe(32)
-                image_url = config['public_origin'] + '/line/schedule/' + image_id + '.png'
+                image_url = branch_url(config['public_origin'] + '/line/schedule/' + image_id + '.png')
                 payload = {'to': config['group_id'], 'messages': [
                     {'type': 'text', 'text': publication_text(week, updated=bool(previous))},
                     {'type': 'image', 'originalContentUrl': image_url, 'previewImageUrl': image_url}]}
@@ -317,7 +323,7 @@ class LineSchedule:
             c.execute("""INSERT INTO staff_schedule_publications(publication_key,week_start,content)
                 VALUES(%s,%s,%s) ON CONFLICT(publication_key) DO NOTHING""",
                 (key, str(week), json.dumps(content, ensure_ascii=False)))
-            c.execute('''UPDATE shifts SET is_kibo=0 WHERE staff_id IN (SELECT id FROM staff WHERE branch_id=1) AND work_date BETWEEN %s AND %s
+            c.execute(f'''UPDATE shifts SET is_kibo=0 WHERE staff_id IN (SELECT id FROM staff WHERE branch_id={branch_number()}) AND work_date BETWEEN %s AND %s
                 AND start IS NOT NULL AND "end" IS NOT NULL''',
                 (str(week), str(week + timedelta(days=6))))
             # Release schedule locks and make the immutable image fetchable by LINE.
@@ -337,6 +343,9 @@ class LineSchedule:
 
 
 def install_line_schedule(app, connect, start_worker=True):
+    from line_branches import LineDatabase
+    connect = LineDatabase(connect)
+    app.extensions['line_branch_support'] = True
     service = LineSchedule(app, connect)
     service.init()
     app.extensions['line_schedule'] = service
@@ -400,8 +409,8 @@ def install_line_schedule(app, connect, start_worker=True):
                     else:
                         try:
                             bot = line_request(token, '/info')
-                            if bot.get('basicId') != '@323txucc':
-                                raise RuntimeError('Hãy dùng token của bot @323txucc.')
+                            if bot.get('basicId') != BOT_IDS.get(branch_number()):
+                                raise RuntimeError('Hãy dùng token của bot ' + BOT_IDS.get(branch_number(), 'đúng chi nhánh') + '.')
                         except RuntimeError as error:
                             notice = str(error)
                         else:
@@ -416,7 +425,7 @@ def install_line_schedule(app, connect, start_worker=True):
                         code = secrets.token_hex(4).upper()
                         c.execute('UPDATE line_schedule_config SET pair_hash=%s,pair_expires=%s WHERE id=1',
                                   (hashlib.sha256(code.encode()).hexdigest(), datetime.now(JST) + timedelta(minutes=30)))
-                        session['line_pair_code'] = code
+                        session['line_pair_code_' + str(branch_number())] = code
                         notice = 'Mã ghép nhóm có hiệu lực 30 phút và chỉ dùng một lần.'
                 elif action == 'enable':
                     if config['credentials'] and config['group_id']:
@@ -446,7 +455,7 @@ def install_line_schedule(app, connect, start_worker=True):
                     target = week + timedelta(days=7)
                     identity = app.extensions.get('line_identity')
                     signup_url = identity['registration_url'](c, target) if identity else None
-                    signup_url = signup_url or 'https://shift-schedule-1fk2.onrender.com/kibo?week=' + str(target)
+                    signup_url = signup_url or branch_url('https://shift-schedule-1fk2.onrender.com/kibo?week=' + str(target))
                     text = registration_reminder(c, week, now, signup_url=signup_url)
                     if not config['credentials'] or text is None:
                         notice = 'Cần kết nối bot và mở đăng ký tuần tới để kiểm tra thẻ.'
@@ -469,7 +478,8 @@ def install_line_schedule(app, connect, start_worker=True):
             signup_url = identity['registration_url'](c, current_week + timedelta(days=7)) if identity else None
             reminder_preview = registration_reminder(c, current_week, now, signup_url=signup_url)
         return render_template('line_settings.html', config=config, notice=notice, recent=recent,
-                               pair_code=session.get('line_pair_code') if config['pair_hash'] else None,
+                               bot_id=BOT_IDS.get(branch_number(), ''), webhook_url=branch_url('https://shift-schedule-1fk2.onrender.com/line/webhook'),
+                               pair_code=session.get('line_pair_code_' + str(branch_number())) if config['pair_hash'] else None,
                                test_key=session.get('line_test_key', ''), reminder_preview=reminder_preview)
 
     @app.get('/admin/line/preview')
@@ -479,9 +489,9 @@ def install_line_schedule(app, connect, start_worker=True):
         today = datetime.now(JST).date()
         week = today - timedelta(days=today.weekday())
         with connect() as c:
-            staff = c.execute('SELECT id,name,active FROM staff WHERE branch_id=1 ORDER BY sort_order,id').fetchall()
-            rows = c.execute('''SELECT staff_id,work_date,start,"end",break_start,break_end,break2_start,break2_end
-                FROM shifts WHERE staff_id IN (SELECT id FROM staff WHERE branch_id=1) AND work_date BETWEEN %s AND %s AND COALESCE(is_kibo,0)=0''',
+            staff = c.execute(f'SELECT id,name,active FROM staff WHERE branch_id={branch_number()} ORDER BY sort_order,id').fetchall()
+            rows = c.execute(f'''SELECT staff_id,work_date,start,"end",break_start,break_end,break2_start,break2_end
+                FROM shifts WHERE staff_id IN (SELECT id FROM staff WHERE branch_id={branch_number()}) AND work_date BETWEEN %s AND %s AND COALESCE(is_kibo,0)=0''',
                 (str(week), str(week + timedelta(days=6)))).fetchall()
         ids = {r['staff_id'] for r in rows}
         return Response(schedule_image(week, [s for s in staff if s['active'] or s['id'] in ids], rows), mimetype='image/png')
@@ -518,18 +528,18 @@ def install_line_schedule(app, connect, start_worker=True):
                     if isinstance(message, dict) and message.get('type') == 'text' and message.get('text') in ('Xem lịch', 'Liên hệ Tencho'):
                         user_id = source.get('userId', '')
                         linked = c.execute('SELECT s.id FROM line_staff_links l JOIN staff s ON s.id=l.staff_id '
-                                           'WHERE l.line_user_id=%s AND s.active=1 AND s.branch_id=1', (user_id,)).fetchone()
+                                           f'WHERE l.line_user_id=%s AND s.active=1 AND s.branch_id={branch_number()}', (user_id,)).fetchone()
                         identity = app.extensions.get('line_identity')
                         today = datetime.now(JST).date()
                         week = today - timedelta(days=today.weekday()) + timedelta(days=7)
                         signup_url = identity['registration_url'](c, week) if identity else None
                         messages = [{'type': 'text', 'text': 'Tencho chưa gửi lịch đã chốt. Bạn xem lại trong nhóm nhân viên nhé.'}]
                         if message.get('text') == 'Liên hệ Tencho':
-                            messages = [{'type': 'text', 'text': 'Bạn cần hỗ trợ hoặc đổi ca? Nhắn Tencho Lân trong nhóm nhân viên nhé.\n\nベト屋築地店\nĐiện thoại quán: 03-6264-1370\nĐịa chỉ: 東京都中央区築地3-11-6 1階\nhttps://betoya.jp/store/tsukiji/'}]
+                            messages = [{'type': 'text', 'text': ('Bạn cần hỗ trợ hoặc đổi ca? Nhắn Tencho Lân trong nhóm nhân viên nhé.\n\nベト屋築地店\nĐiện thoại quán: 03-6264-1370\nĐịa chỉ: 東京都中央区築地3-11-6 1階\nhttps://betoya.jp/store/tsukiji/' if branch_number()==1 else 'Bạn cần hỗ trợ hoặc đổi ca? Nhắn Tencho trong nhóm nhân viên '+branch_name()+' nhé.')}]
                         elif not linked:
                             messages = [welcome_card(signup_url)] if signup_url else [{'type': 'text', 'text': 'Vui lòng liên hệ Tencho để liên kết tên trước khi xem lịch.'}]
                         else:
-                            url = signup_url.split('?')[0] + '?view=schedule' if signup_url else config['public_origin'] + '/staff/schedule'
+                            url = branch_url(signup_url.split('?')[0] + '?view=schedule' if signup_url else config['public_origin'] + '/staff/schedule')
                             messages = [{'type': 'template', 'altText': 'Xem lịch đã chốt của quán và lịch của bạn',
                                 'template': {'type': 'buttons', 'text': 'Chọn lịch muốn xem. Bấm tên trong bảng để mở lịch riêng.',
                                     'actions': [{'type': 'uri', 'label': 'Lịch cả quán', 'uri': url},

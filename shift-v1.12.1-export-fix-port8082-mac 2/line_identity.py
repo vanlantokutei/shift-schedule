@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
+from line_branches import branch_number, branch_name, branch_url
 from flask import abort, g, jsonify, redirect, render_template, request, session
 
 JST = ZoneInfo('Asia/Tokyo')
@@ -52,15 +53,15 @@ def install_line_identity(app, connect):
     def registration_url(c, week):
         settings = config(c)
         if settings['channel_id'] and settings['liff_id']:
-            return 'https://liff.line.me/' + settings['liff_id'] + '?week=' + str(week)
+            return branch_url('https://liff.line.me/' + settings['liff_id'] + '?week=' + str(week))
         return None
 
     def manager_menu_allowed(c, uid):
         if not uid:
             return False
-        return bool(c.execute('''SELECT s.id FROM line_manager_menu_links m
+        return bool(c.execute(f'''SELECT s.id FROM line_manager_menu_links m
             JOIN line_staff_links l ON l.line_user_id=m.line_user_id AND l.staff_id=m.staff_id
-            JOIN staff s ON s.id=m.staff_id WHERE m.line_user_id=%s AND s.active=1 AND s.branch_id=1''', (uid,)).fetchone())
+            JOIN staff s ON s.id=m.staff_id WHERE m.line_user_id=%s AND s.active=1 AND s.branch_id={branch_number()}''', (uid,)).fetchone())
 
     app.extensions['line_identity'] = {'registration_url': registration_url,
                                        'manager_menu_allowed': manager_menu_allowed}
@@ -104,8 +105,8 @@ def install_line_identity(app, connect):
         return data
 
     def linked_staff(c, uid):
-        return c.execute('''SELECT s.id,s.name FROM line_staff_links l
-            JOIN staff s ON s.id=l.staff_id WHERE l.line_user_id=%s AND s.active=1 AND s.branch_id=1''', (uid,)).fetchone()
+        return c.execute(f'''SELECT s.id,s.name FROM line_staff_links l
+            JOIN staff s ON s.id=l.staff_id WHERE l.line_user_id=%s AND s.active=1 AND s.branch_id={branch_number()}''', (uid,)).fetchone()
 
     @app.get('/kibo/line')
     def line_kibo_entry():
@@ -120,8 +121,8 @@ def install_line_identity(app, connect):
             uid = verified_user(c, data)
             link = linked_staff(c, uid)
             can_manage = manager_menu_allowed(c, uid)
-            people = c.execute('''SELECT s.id,s.name,l.line_user_id FROM staff s
-                LEFT JOIN line_staff_links l ON l.staff_id=s.id WHERE s.active=1 AND s.branch_id=1 ORDER BY s.sort_order,s.id''').fetchall()
+            people = c.execute(f'''SELECT s.id,s.name,l.line_user_id FROM staff s
+                LEFT JOIN line_staff_links l ON l.staff_id=s.id WHERE s.active=1 AND s.branch_id={branch_number()} ORDER BY s.sort_order,s.id''').fetchall()
         return jsonify(ok=True, linked=dict(link) if link else None, manager_menu=can_manage,
                        staff=[{'id': p['id'], 'name': p['name'],
                                'taken': bool(p['line_user_id'] and p['line_user_id'] != uid)} for p in people])
@@ -136,7 +137,7 @@ def install_line_identity(app, connect):
         with connect() as c:
             uid = verified_user(c, data)
             c.execute('SELECT pg_advisory_xact_lock(%s)', (IDENTITY_LOCK,))
-            person = c.execute('SELECT id,name FROM staff WHERE id=%s AND active=1 AND branch_id=1', (staff_id,)).fetchone()
+            person = c.execute(f'SELECT id,name FROM staff WHERE id=%s AND active=1 AND branch_id={branch_number()}', (staff_id,)).fetchone()
             if not person:
                 return jsonify(ok=False, error='Tên này không còn hoạt động. Liên hệ quản lý.'), 409
             occupant = c.execute('SELECT line_user_id FROM line_staff_links WHERE staff_id=%s', (staff_id,)).fetchone()
@@ -151,8 +152,6 @@ def install_line_identity(app, connect):
     def remember_line_staff():
         g.line_staff = None
         from branches import branch_id
-        if branch_id()!=1:
-            return
         uid = session.get('line_staff_user')
         if not uid or session.get('line_staff_exp', 0) <= time.time():
             return
@@ -165,7 +164,7 @@ def install_line_identity(app, connect):
         g.line_staff = dict(person)
         if request.endpoint == 'kibo' and request.method == 'GET':
             if request.args.get('staff_id') != str(person['id']):
-                return redirect('/kibo?' + urlencode({'staff_id': person['id'], 'week': requested_week()}))
+                return redirect(branch_url('/kibo?' + urlencode({'staff_id': person['id'], 'week': requested_week()})))
         if request.method != 'GET' or request.endpoint != 'kibo':
             data = request.get_json(silent=True) if request.is_json else request.values
             if str((data or {}).get('staff_id', '')) != str(person['id']):
@@ -174,7 +173,7 @@ def install_line_identity(app, connect):
     @app.context_processor
     def line_kibo_context():
         from branches import branch_id
-        if request.endpoint != 'kibo' or branch_id()!=1:
+        if request.endpoint != 'kibo':
             return {}
         with connect() as c:
             settings = config(c)
@@ -194,8 +193,8 @@ def install_line_identity(app, connect):
                         staff_id = int(request.form.get('staff_id'))
                     except (ValueError, TypeError):
                         abort(400)
-                    person = c.execute('''SELECT s.id,l.line_user_id FROM staff s JOIN line_staff_links l
-                        ON l.staff_id=s.id WHERE s.id=%s AND s.active=1 AND s.branch_id=1''', (staff_id,)).fetchone()
+                    person = c.execute(f'''SELECT s.id,l.line_user_id FROM staff s JOIN line_staff_links l
+                        ON l.staff_id=s.id WHERE s.id=%s AND s.active=1 AND s.branch_id={branch_number()}''', (staff_id,)).fetchone()
                     if not person:
                         abort(409, description='Nhân viên cần liên kết LINE trước.')
                     if request.form['action'] == 'manager_menu_enable':
@@ -230,10 +229,10 @@ def install_line_identity(app, connect):
                             notice = 'Đã lưu kết nối LINE. Nhân viên mở link LIFF để chọn tên lần đầu.'
                 c.commit()
             settings = config(c)
-            links = c.execute('''SELECT s.id,s.name,s.active,l.linked_at,m.line_user_id AS manager_menu
+            links = c.execute(f'''SELECT s.id,s.name,s.active,l.linked_at,m.line_user_id AS manager_menu
                 FROM line_staff_links l JOIN staff s ON s.id=l.staff_id
                 LEFT JOIN line_manager_menu_links m ON m.line_user_id=l.line_user_id AND m.staff_id=l.staff_id
-                WHERE s.branch_id=1 ORDER BY s.sort_order,s.id''').fetchall()
+                WHERE s.branch_id={branch_number()} ORDER BY s.sort_order,s.id''').fetchall()
         return render_template('line_identity_settings.html', settings=settings, links=links, notice=notice)
 
     from staff_schedule import install_staff_schedule

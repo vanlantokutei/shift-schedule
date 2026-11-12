@@ -45,7 +45,7 @@
         : 'Các ca đã xếp sẽ được chốt và gửi vào nhóm.';
       document.getElementById('linePublishMessage').textContent = privateOnly ? 'Lịch tổng đã gửi vào nhóm. Lần này chỉ gửi lịch riêng cho từng nhân viên đã liên kết.' : (preview.message_preview || '');
       error.textContent = '';
-      image.src = '/line/publish-preview.png?week=' + encodeURIComponent(preview.week) + '&version=' + encodeURIComponent(preview.version);
+      image.src = '/line/publish-preview.png?week=' + encodeURIComponent(preview.week) + '&version=' + encodeURIComponent(preview.version) + '&branch=' + encodeURIComponent(button.dataset.branch || '1');
       image.onerror = () => {
         error.textContent = 'Không tải được ảnh hoặc lịch vừa thay đổi. Đóng bảng này và mở lại bản xem trước.';
         confirm.disabled = true;

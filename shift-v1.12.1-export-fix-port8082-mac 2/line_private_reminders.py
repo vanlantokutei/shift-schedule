@@ -5,6 +5,7 @@ import re
 import uuid
 from zoneinfo import ZoneInfo
 
+from line_branches import branch_number, branch_name, branch_url
 from flask import abort, g, render_template, request
 from kibo_deadlines import window
 from line_design import reminder_card
@@ -49,10 +50,10 @@ class PrivateReminders:
             (uid, int(event['type'] == 'follow'), stamp))
 
     def candidates(self, c, week):
-        return c.execute('''SELECT s.id,s.name,l.line_user_id FROM staff s
+        return c.execute(f'''SELECT s.id,s.name,l.line_user_id FROM staff s
             JOIN line_staff_links l ON l.staff_id=s.id
             LEFT JOIN line_private_follows f ON f.line_user_id=l.line_user_id
-            WHERE s.active=1 AND s.branch_id=1 AND (f.active IS NULL OR f.active=1)
+            WHERE s.active=1 AND s.branch_id={branch_number()} AND (f.active IS NULL OR f.active=1)
             AND NOT EXISTS(SELECT 1 FROM kibo_submissions k WHERE k.staff_id=s.id AND k.week_start=%s)
             AND NOT EXISTS(SELECT 1 FROM shifts sh WHERE sh.staff_id=s.id
                 AND sh.work_date BETWEEN %s AND %s AND sh.is_kibo=1)
@@ -68,7 +69,7 @@ class PrivateReminders:
                     not c.execute('SELECT enabled FROM line_private_config WHERE id=1').fetchone()['enabled']):
                 return
             weeks = {now.date() - timedelta(days=now.weekday()) + timedelta(days=7)}
-            for row in c.execute('SELECT week_start FROM kibo_deadlines WHERE deadline>%s', (now,)).fetchall():
+            for row in (c.execute('SELECT week_start FROM kibo_deadlines WHERE deadline>%s', (now,)) if branch_number()==1 else c.execute('SELECT week_start FROM branch_kibo_deadlines WHERE branch_id=%s AND deadline>%s', (branch_number(), now))).fetchall():
                 try:
                     week = date.fromisoformat(row['week_start'])
                     if not week.weekday():
@@ -161,10 +162,10 @@ def install_private_reminders(app, connect, service, send):
             now = datetime.now(JST)
             week = now.date() - timedelta(days=now.weekday()) + timedelta(days=7)
             _, deadline = window(c, week)
-            people = c.execute('''SELECT s.id,s.name,l.staff_id AS linked,f.active AS follows
+            people = c.execute(f'''SELECT s.id,s.name,l.staff_id AS linked,f.active AS follows
                 FROM staff s LEFT JOIN line_staff_links l ON l.staff_id=s.id
                 LEFT JOIN line_private_follows f ON f.line_user_id=l.line_user_id
-                WHERE s.active=1 AND s.branch_id=1 ORDER BY s.sort_order,s.id''').fetchall()
+                WHERE s.active=1 AND s.branch_id={branch_number()} ORDER BY s.sort_order,s.id''').fetchall()
             recent = c.execute('''SELECT d.week_start,s.name,d.accepted_at,d.last_error FROM line_private_deliveries d
                 LEFT JOIN staff s ON s.id=d.staff_id ORDER BY d.next_attempt DESC LIMIT 10''').fetchall()
         return render_template('line_private_settings.html',settings=settings,master=master,notice=notice,

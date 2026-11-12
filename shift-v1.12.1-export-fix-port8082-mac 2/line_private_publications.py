@@ -1,4 +1,5 @@
 """Durable, per-employee delivery of explicitly published schedules."""
+from line_branches import branch_number, branch_name, branch_url
 import json
 import uuid
 from datetime import datetime, timedelta
@@ -10,7 +11,7 @@ JST=ZoneInfo('Asia/Tokyo')
 
 def private_text(week,person,rows):
     own={r['work_date']:r for r in rows if r['staff_id']==person['id']}
-    lines=[f"📅 Lịch làm của {person['name']} · ベト屋築地店",f"Tuần {week:%d/%m}–{week+timedelta(days=6):%d/%m/%Y}"]
+    lines=[f"📅 Lịch làm của {person['name']} · {branch_name()}",f"Tuần {week:%d/%m}–{week+timedelta(days=6):%d/%m/%Y}"]
     for i in range(7):
         day=week+timedelta(days=i);row=own.get(str(day));label=['T2','T3','T4','T5','T6','T7','CN'][i]
         text=f"{label} {day:%d/%m}: —"
@@ -37,10 +38,10 @@ class PrivatePublications:
                 PRIMARY KEY(publication_key,staff_id))''')
 
     def recipients(self,c):
-        return c.execute('''SELECT s.id,s.name,l.line_user_id FROM staff s
+        return c.execute(f'''SELECT s.id,s.name,l.line_user_id FROM staff s
             JOIN line_staff_links l ON l.staff_id=s.id
             LEFT JOIN line_private_follows f ON f.line_user_id=l.line_user_id
-            WHERE s.branch_id=1 AND s.active=1 AND (f.active IS NULL OR f.active=1)
+            WHERE s.branch_id={branch_number()} AND s.active=1 AND (f.active IS NULL OR f.active=1)
             ORDER BY s.id''').fetchall()
 
     def enqueue(self,c,key,week,rows,now):
@@ -74,9 +75,9 @@ class PrivatePublications:
                 key,sid=job['publication_key'],job['staff_id']
                 expires=job['expires_at']
                 if isinstance(expires,str):expires=datetime.fromisoformat(expires)
-                valid=c.execute('''SELECT s.id FROM staff s JOIN line_staff_links l ON l.staff_id=s.id
+                valid=c.execute(f'''SELECT s.id FROM staff s JOIN line_staff_links l ON l.staff_id=s.id
                     LEFT JOIN line_private_follows f ON f.line_user_id=l.line_user_id
-                    WHERE s.id=%s AND s.branch_id=1 AND s.active=1 AND l.line_user_id=%s
+                    WHERE s.id=%s AND s.branch_id={branch_number()} AND s.active=1 AND l.line_user_id=%s
                     AND (f.active IS NULL OR f.active=1)''',(sid,job['line_user_id'])).fetchone()
                 newer=c.execute('''SELECT publication_key FROM staff_schedule_publications
                     WHERE week_start=%s AND published_at>%s LIMIT 1''',(job['week_start'],job['published_at'])).fetchone()
