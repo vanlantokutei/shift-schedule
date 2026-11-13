@@ -37,7 +37,11 @@
    <button type="button" id="week-off-button" class="week-off-button" {% if has_locked_shifts or week_off_registered %}disabled{% endif %}>{{'✓ Đã báo nghỉ cả tuần' if week_off_registered else 'Tuần này nghỉ'}}</button>
    <p>{{'Tuần này đã có ca quản lý chốt. Muốn nghỉ hoặc đổi ca, vui lòng liên hệ quản lý.' if has_locked_shifts else 'Không đăng ký ca nào trong tuần này. Cần xác nhận trước khi gửi.'}}</p>
   </div>
+  <label>Lịch cố định cho tháng <input type="month" id="fixed-month" value="{{days[0].strftime('%Y-%m')}}" required></label>
+  <p class="fixed-shift-note">Ca bên dưới là mẫu lặp theo thứ trong tháng đã chọn. Tháng khác giữ lịch riêng; vẫn cần kiểm tra và gửi Kibo mỗi tuần.</p>
   <div class="fixed-shift-tools">
+   <button type="button" onclick="saveFixedKibo(true)">📅 Đăng ký lịch cố định tháng</button>
+   <button type="button" onclick="cancelFixedKibo(true)">Hủy lịch cố định tháng</button>
    <button type="button" onclick="fillKibo('previous')">↩️ Dùng lịch tuần trước</button>
    <button type="button" class="fixed-save" onclick="saveFixedKibo()">📌 Đăng ký làm lịch cố định</button>
    <button type="button" class="fixed-cancel" onclick="cancelFixedKibo()">Hủy lịch cố định</button>
@@ -129,19 +133,23 @@ async function fillKibo(mode){
   document.getElementById('fixed-shift-note').textContent=mode==='previous'?'Đã điền '+count+' ca từ tuần trước. Bạn có thể sửa/xóa trước khi gửi.':'Đã điền '+count+' ca lịch cố định.';
  }catch(e){alert('Không lấy được lịch: '+e.message)}
 }
-async function saveFixedKibo(){
+async function saveFixedKibo(monthly=false){
  const form=document.getElementById('kibo-form'); if(!form)return;
  const entries=[];
  for(let i=0;i<7;i++){const a=form.elements['start_'+i],b=form.elements['end_'+i];if(a&&b&&a.value&&b.value)entries.push({weekday:i,start:a.value,end:b.value})}
  if(!entries.length){alert('Hãy nhập ít nhất 1 ca trước khi đăng ký lịch cố định.');return}
- if(!confirm('Lưu lịch hiện tại làm lịch cố định? Các tuần sau hệ thống sẽ tự điền, nhưng vẫn cần bấm gửi Kibo.'))return;
- const r=await fetch('/kibo/fixed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_id:form.elements.staff_id.value,entries})});
- const data=await r.json(); if(data.ok){document.getElementById('fixed-shift-note').textContent='📌 Đã lưu '+data.saved+' ca làm lịch cố định.'}else alert(data.error||'Không lưu được lịch cố định.');
+ const month=monthly?document.getElementById('fixed-month').value:'';
+ if(monthly&&!month){alert('Hãy chọn tháng.');return}
+ if(!confirm('Lưu ca mẫu lặp theo thứ '+(monthly?'trong tháng '+month:'cho các tuần sau')+'? Bạn vẫn cần kiểm tra và gửi Kibo.'))return;
+ const r=await fetch('/kibo/fixed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_id:form.elements.staff_id.value,entries,month})});
+ const data=await r.json(); if(data.ok){document.getElementById('fixed-shift-note').textContent='📌 Đã lưu '+data.saved+' ca mẫu'+(monthly?' cho tháng '+month:'')+'.'}else alert(data.error||'Không lưu được lịch cố định.');
 }
-async function cancelFixedKibo(){
- const form=document.getElementById('kibo-form');if(!form||!confirm('Hủy lịch cố định của bạn?'))return;
- const r=await fetch('/kibo/fixed?staff_id='+encodeURIComponent(form.elements.staff_id.value),{method:'DELETE'});
- const data=await r.json();if(data.ok)document.getElementById('fixed-shift-note').textContent='Đã hủy lịch cố định. Những tuần sau sẽ không tự điền nữa.';else alert('Không hủy được lịch cố định.');
+async function cancelFixedKibo(monthly=false){
+ const month=monthly?document.getElementById("fixed-month").value:"";
+ if(monthly&&!month){alert("Hãy chọn tháng.");return}
+ const form=document.getElementById('kibo-form');if(!form||!confirm('Hủy lịch cố định '+(monthly?'tháng '+month:'lâu dài')+' của bạn?'))return;
+ const r=await fetch('/kibo/fixed?staff_id='+encodeURIComponent(form.elements.staff_id.value)+'&month='+encodeURIComponent(month),{method:'DELETE'});
+ const data=await r.json();if(data.ok)document.getElementById('fixed-shift-note').textContent='Đã hủy lịch cố định '+(monthly?'tháng '+month+'. Lịch cố định lâu dài (nếu có) sẽ được dùng lại.':'lâu dài.');else alert('Không hủy được lịch cố định.');
 }
 async function shareKibo(){
   const data={title:'希望シフト',text:'Đăng ký lịch làm mong muốn tại đây:',url:window.location.href};

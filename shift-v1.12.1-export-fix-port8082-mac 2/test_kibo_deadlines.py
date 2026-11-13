@@ -55,6 +55,7 @@ def env(monkeypatch):
         CREATE TABLE staff(id INTEGER PRIMARY KEY,name TEXT,active INTEGER,sort_order INTEGER,staff_type TEXT,pay_type TEXT,hourly_rate INTEGER,monthly_salary INTEGER);
         INSERT INTO staff VALUES(1,'Lân',1,0,'fulltime','hourly',1280,0);
         CREATE TABLE shifts(staff_id INTEGER,work_date TEXT,start TEXT,"end" TEXT,break_min INTEGER,break_start TEXT,break_end TEXT,break2_start TEXT,break2_end TEXT,is_kibo INTEGER,UNIQUE(staff_id,work_date));
+        CREATE TABLE monthly_fixed_kibo(staff_id INTEGER,month TEXT,weekday INTEGER,start TEXT,"end" TEXT,PRIMARY KEY(staff_id,month,weekday));
         CREATE TABLE fixed_kibo(staff_id INTEGER,weekday INTEGER,start TEXT,"end" TEXT);
         CREATE TABLE kibo_submissions(staff_id INTEGER,week_start TEXT,submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(staff_id,week_start));
     ''')
