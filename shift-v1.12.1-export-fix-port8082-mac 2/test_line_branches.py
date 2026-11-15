@@ -104,8 +104,8 @@ def test_publish_and_private_worker_only_deliver_selected_branch(tenants):
     with branch_scope(DELI):
         app.extensions['line_private_publications'].tick()
     assert len(calls)==2 and calls[1][2]['to']=='Udeli' and calls[1][0]=='d'*50
-    assert '22:00–06:00 (+1 ngày)' in calls[1][2]['messages'][0]['text']
-    assert 'Lân' not in calls[1][2]['messages'][0]['text']
+    assert '22:00–06:00 (+1 ngày)' in calls[1][2]['messages'][0]['altText']
+    assert 'Lân' not in calls[1][2]['messages'][0]['altText']
     # A repeat accepts the same publication without sending it again.
     result=client.post('/line/publish?branch=2',json={'week':'2026-11-16','version':preview['version']},headers={'X-CSRF-Token':csrf},base_url=BASE)
     assert result.get_json()['duplicate'] and len(calls)==2

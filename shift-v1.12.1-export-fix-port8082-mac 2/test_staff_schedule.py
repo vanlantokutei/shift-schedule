@@ -158,3 +158,19 @@ def test_manager_button_revocation_and_existing_owner_login(linked_state):
     assert 'Quản lý lịch'.encode() not in get(lan).data
     assert get(lan,'/staff/manage').status_code==403
     assert get(owner,'/staff/manage').location=='/'
+
+
+def test_today_border_uses_japan_date_and_redirect_keeps_week(linked_state,monkeypatch):
+    import staff_schedule
+    class Clock(datetime):
+        @classmethod
+        def now(cls,tz=None):
+            return datetime(2026,11,18,0,5,tzinfo=line.JST)
+    monkeypatch.setattr(staff_schedule,'datetime',Clock)
+    app,raw,service,_,_=linked_state
+    response=get(app.test_client(),'/staff/schedule?week=2026-11-16&mine=1')
+    assert 'week=2026-11-16' in response.location and 'mine=1' in response.location
+    c=link(app);publish(raw,service)
+    page=get(c,'/staff/schedule?week=2026-11-16&mine=1').data.decode()
+    assert page.count('class="today-label"')==1
+    assert 'Thứ 4 · 18/11<span class="today-label">Hôm nay</span>' in page

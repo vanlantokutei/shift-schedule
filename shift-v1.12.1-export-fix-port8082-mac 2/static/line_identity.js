@@ -8,7 +8,7 @@
   let token=null, current=null;
   let schedule=false, mine=false;
   const scoped=value=>{const u=new URL(value,location.origin);u.searchParams.set('branch',root.dataset.branch);return u.href;};
-  const next=staff => scoped( schedule ? '/staff/schedule'+(mine?'?mine=1':'') : '/kibo?'+new URLSearchParams({staff_id:String(staff.id),week:root.dataset.week}));
+  const next=staff => scoped( schedule ? '/staff/schedule?'+new URLSearchParams({week:root.dataset.week,...(mine?{mine:'1'}:{})}) : '/kibo?'+new URLSearchParams({staff_id:String(staff.id),week:root.dataset.week}));
   async function api(path,extra={}) {
     const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id_token:token,...extra})});

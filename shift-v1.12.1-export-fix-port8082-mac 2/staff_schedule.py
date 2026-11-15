@@ -17,7 +17,7 @@ def install_staff_schedule(app, connect, linked_staff):
         person = linked_staff(c, uid) if uid and session.get('line_staff_exp', 0) > time.time() else None
         if person or getattr(g, 'manager', None):
             return dict(person) if person else None, None
-        return None, redirect(branch_url('/kibo/line?' + urlencode({'view': 'schedule', 'mine': request.args.get('mine', '0')})))
+        return None, redirect(branch_url('/kibo/line?' + urlencode({'view': 'schedule', 'mine': request.args.get('mine', '0'), **({'week': request.args['week']} if request.args.get('week') else {})})))
 
     def can_manage(c):
         if getattr(g, 'manager', None):
@@ -137,7 +137,7 @@ def install_staff_schedule(app, connect, linked_staff):
         people = [selected] if selected else content['people']
         cells = {(r['staff_id'], str(r['work_date'])): r for r in content['shifts']}
         return render_template('staff_schedule.html', **holiday_context(days), week=week, days=days, people=people,
-            selected=selected, me=me, cells=cells, saved=bool(saved), old=bool(old),
+            selected=selected, me=me, cells=cells, today=datetime.now(ZoneInfo('Asia/Tokyo')).date(), saved=bool(saved), old=bool(old),
             imported=content.get('source') == 'manager-import', show_manager_menu=show_manager_menu,
             previous=week-timedelta(days=7), following=week+timedelta(days=7),
             labels=['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật'])
