@@ -150,3 +150,28 @@ def test_net_hours_two_breaks_overnight_and_other_staff_excluded():
     card=private_card(WEEK,{'id':1,'name':'Lân'},rows+[dict(rows[0],staff_id=2)],schedule_url='https://example.com/staff/schedule?mine=1')
     assert 'Tổng giờ: 6 giờ 30 phút' in json.dumps(card,ensure_ascii=False)
     assert 'Trước:' not in json.dumps(card,ensure_ascii=False)
+
+
+def test_owner_private_card_test_is_single_recipient_idempotent_and_not_publish(linked):
+    import re
+    from test_manager_auth import setup,csrf
+    app,raw,service,calls,environment=linked
+    publish(linked)
+    client=setup(environment)
+    path='/admin/line/private-test?staff_id=1&week=2026-11-16'
+    page=client.get(path,base_url='https://localhost')
+    assert page.status_code==200
+    fields=dict((key,value) for key,value in re.findall(r'name="([^"]+)" value="([^"]*)"',page.data.decode()))
+    before=len(calls)
+    result=client.post(path,data=fields,base_url='https://localhost')
+    assert result.status_code==200 and 'LINE đã tiếp nhận'.encode() in result.data
+    assert len(calls)==before+1 and calls[-1][2]['to']==U1
+    assert calls[-1][2]['messages'][0]['type']=='flex'
+    assert calls[-1][2]['messages'][0]['altText'].startswith('GỬI THỬ')
+    assert raw.execute('SELECT count(*) FROM staff_schedule_publications').fetchone()[0]==1
+    assert client.post(path,data=fields,base_url='https://localhost').status_code==200
+    assert len(calls)==before+1
+    assert client.post(path,data={},base_url='https://localhost').status_code==403
+    assert app.test_client().post(path,data=fields,base_url='https://localhost').status_code==401
+    assert client.get('/admin/line/private-test?staff_id=3&week=2026-11-16',base_url='https://localhost').status_code==200
+    assert len(calls)==before+1

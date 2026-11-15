@@ -602,8 +602,9 @@ def install_line_schedule(app, connect, start_worker=True):
     install_line_identity(app, connect)
     from line_private_reminders import install_private_reminders
     install_private_reminders(app, connect, service, lambda *args, **kwargs: line_request(*args, **kwargs))
-    from line_private_publications import PrivatePublications
+    from line_private_publications import PrivatePublications, install_private_card_test
     app.extensions['line_private_publications']=PrivatePublications(connect,service,lambda *args, **kwargs: line_request(*args, **kwargs))
+    install_private_card_test(app,service)
     if start_worker and not os.environ.get('LINE_SCHEDULER_DISABLED'):
         threading.Thread(target=service.loop, name='line-weekly-schedule', daemon=True).start()
     return service

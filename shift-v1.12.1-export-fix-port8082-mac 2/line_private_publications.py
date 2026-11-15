@@ -170,3 +170,62 @@ class PrivatePublications:
                     c.execute('UPDATE line_private_publications SET accepted_at=%s,last_error=NULL WHERE publication_key=%s AND staff_id=%s',
                               (now,key,sid))
                 c.commit()
+
+
+def install_private_card_test(app,service):
+    """Owner-only, explicit single-recipient test; never publishes schedules."""
+    import hashlib
+    import hmac
+    import secrets
+    from flask import abort,g,render_template,request,session
+    from line_schedule import publish_week
+
+    @app.route('/admin/line/private-test',methods=['GET','POST'])
+    def line_private_card_test():
+        if g.manager['role']!='owner':abort(403)
+        week=publish_week(request.values.get('week') or str(datetime.now(JST).date()-timedelta(days=datetime.now(JST).weekday())+timedelta(days=7)))
+        try:sid=int(request.values.get('staff_id','0'))
+        except ValueError:abort(400)
+        if request.method=='GET':session['private_card_test_key']=str(uuid.uuid4())
+        notice=None;status=200;preview=None;version='';person=None
+        with service.connect() as c:
+            people=app.extensions['line_private_publications'].recipients(c)
+            person=next((p for p in people if p['id']==sid),None)
+            saved=c.execute("""SELECT content FROM staff_schedule_publications WHERE week_start=%s
+                AND published_at IS NOT NULL ORDER BY published_at DESC,publication_key DESC LIMIT 1""",(str(week),)).fetchone()
+            config=service.config(c)
+            if person and saved:
+                rows=json.loads(saved['content'])['shifts']
+                preview=private_card(week,person,rows,schedule_url=branch_url(config['public_origin']+'/staff/schedule?mine=1&week='+str(week)))
+                preview['altText']='GỬI THỬ · '+preview['altText'][:1450]
+                preview['contents']['header']['contents'][1]['text']='GỬI THỬ · Lịch của '+person['name']
+                version=hashlib.sha256(json.dumps({'card':preview,'to':person['line_user_id']},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+            if request.method=='POST':
+                key=request.form.get('test_key','');expected=session.get('private_card_test_key','')
+                if not expected or not hmac.compare_digest(key,expected):abort(409)
+                if not person or not preview or not config['credentials']:abort(409)
+                if not hmac.compare_digest(version,request.form.get('version','')):abort(409)
+                delivery_key='private-card-test:'+key
+                job=c.execute('SELECT * FROM line_schedule_deliveries WHERE week_start=%s',(delivery_key,)).fetchone()
+                if not job:
+                    now=datetime.now(JST)
+                    payload={'to':person['line_user_id'],'messages':[preview]}
+                    c.execute("""INSERT INTO line_schedule_deliveries
+                        (week_start,image_id,png,payload,retry_key,next_attempt,expires_at)
+                        VALUES(%s,%s,%s,%s,%s,%s,%s)""",
+                        (delivery_key,secrets.token_urlsafe(32),b'',json.dumps(payload,ensure_ascii=False),key,now,now+timedelta(hours=23)))
+                    c.commit()
+                    job=c.execute('SELECT * FROM line_schedule_deliveries WHERE week_start=%s',(delivery_key,)).fetchone()
+                if json.loads(job['payload'])!={'to':person['line_user_id'],'messages':[preview]}:abort(409)
+                if job['accepted_at']:notice='Tin thử này đã được LINE tiếp nhận trước đó. Không gửi trùng.'
+                elif datetime.now(JST)>=job['expires_at']:abort(409)
+                else:
+                    from line_schedule import line_request
+                    try:line_request(service.credentials(config)['token'],'/message/push',json.loads(job['payload']),job['retry_key'])
+                    except RuntimeError:
+                        notice='LINE chưa xác nhận. Bấm lại để thử cùng mã gửi, tránh tin trùng.';status=502
+                    else:
+                        c.execute('UPDATE line_schedule_deliveries SET accepted_at=%s WHERE week_start=%s',(datetime.now(JST),delivery_key))
+                        notice='LINE đã tiếp nhận tin thử gửi riêng cho '+person['name']+'. Không gửi vào nhóm hay nhân viên khác.'
+        return render_template('line_private_test.html',people=people,person=person,week=week,
+            preview=preview,version=version,test_key=session['private_card_test_key'],notice=notice),status
