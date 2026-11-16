@@ -99,8 +99,8 @@ def install_manager_auth(app, connect):
 
     def password_error():
         password = request.form.get('password', '')
-        if not 12 <= len(password) <= 128:
-            return 'Mật khẩu cần từ 12 đến 128 ký tự.'
+        if not 8 <= len(password) <= 128:
+            return 'Mật khẩu cần từ 8 đến 128 ký tự.'
         if password != request.form.get('confirm_password', ''):
             return 'Hai mật khẩu chưa giống nhau.'
 

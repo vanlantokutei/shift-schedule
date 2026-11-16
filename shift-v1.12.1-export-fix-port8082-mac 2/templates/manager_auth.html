@@ -10,13 +10,13 @@
 <form method="post"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}"><label>Tên hiển thị<input name="display_name" required maxlength="80"></label><label>Tên đăng nhập<input name="username" required minlength="3" maxlength="40" pattern="[a-z0-9][a-z0-9_.\-]{2,39}" autocomplete="off"></label><button type="submit">Tạo link mời quản lý</button></form>
 {% for account in accounts %}<div class="account"><b>{{account.display_name}}</b> · {{account.username}}<small>{{'Super Admin · Tất cả chi nhánh' if account.role=='owner' else 'Tencho · ' ~ account.branch_name}} · {{'Đã thu hồi quyền' if not account.active else ('Đã kích hoạt' if account.activated else 'Chờ kích hoạt')}}</small>{% if account.role!='owner' and account.active %}<form method="post" action="{{url_for('manager_account_action',account_id=account.id)}}" onsubmit="return confirm('Thu hồi quyền truy cập của quản lý này?')"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}"><button type="submit">Thu hồi quyền</button></form>{% elif account.role!='owner' %}<form method="post" action="{{url_for('manager_account_reactivate',account_id=account.id)}}"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}"><button type="submit">Kích hoạt lại</button></form>{% endif %}</div>{% endfor %}
 {% else %}<h1>{{'Đăng nhập quản lý' if mode=='login' else ('Thiết lập chủ sở hữu' if mode=='setup' else 'Kích hoạt tài khoản')}}</h1>
-<p>{{'Đăng nhập để xem, xếp lịch và quản lý dữ liệu.' if mode=='login' else 'Mật khẩu chỉ bạn biết, cần từ 12 đến 128 ký tự.'}}</p>
+<p>{{'Đăng nhập để xem, xếp lịch và quản lý dữ liệu.' if mode=='login' else 'Mật khẩu chỉ bạn biết, cần từ 8 đến 128 ký tự.'}}</p>
 <form method="post"><input type="hidden" name="csrf_token" value="{{manager_csrf()}}">
 {% if mode=='setup' %}<label>Mã thiết lập<input type="password" name="setup_token" required autocomplete="off"></label><label>Tên hiển thị<input name="display_name" required maxlength="80" autocomplete="name"></label>{% endif %}
 {% if mode in ['login','setup'] %}<label>Tên đăng nhập<input name="username" required maxlength="40" autocomplete="username" autocapitalize="none" spellcheck="false"></label>{% endif %}
 {% if mode=='activate' %}<input type="hidden" name="invite_token" id="inviteToken"><p id="inviteBranch" role="status">Đang xác nhận chi nhánh được giao…</p>{% endif %}
-<label>Mật khẩu<input type="password" name="password" required maxlength="128" {% if mode!='login' %}minlength="12"{% endif %} autocomplete="{{'current-password' if mode=='login' else 'new-password'}}"></label>
-{% if mode!='login' %}<label>Nhập lại mật khẩu<input type="password" name="confirm_password" required minlength="12" maxlength="128" autocomplete="new-password"></label>{% endif %}
+<label>Mật khẩu<input type="password" name="password" required maxlength="128" {% if mode!='login' %}minlength="8"{% endif %} autocomplete="{{'current-password' if mode=='login' else 'new-password'}}"></label>
+{% if mode!='login' %}<label>Nhập lại mật khẩu<input type="password" name="confirm_password" required minlength="8" maxlength="128" autocomplete="new-password"></label>{% endif %}
 <button type="submit" {% if mode=='activate' %}id="activateSubmit" disabled{% endif %}>{{'Đăng nhập' if mode=='login' else 'Lưu tài khoản'}}</button></form>
 {% if mode=='activate' %}<script>
 (async()=>{

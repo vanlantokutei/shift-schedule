@@ -184,3 +184,19 @@ def test_reactivate_unactivated_account_issues_new_branch_invitation(env):
     data['invite_token']=invite
     assert post(anonymous,'/admin/activate',data).status_code==302
     assert raw.execute('SELECT branch_id FROM manager_accounts WHERE id=?',(uid,)).fetchone()['branch_id']==2
+
+
+def test_activation_accepts_eight_characters_rejects_seven(env):
+    owner=setup(env);app,raw,_=env
+    r=post(owner,'/admin/accounts',dict(csrf_token=csrf(owner,'/admin/accounts'),username='shortpass',display_name='Short Password'))
+    invite=re.search(rb'value="https://localhost/admin/activate\?branch=1#([^"]+)"',r.data).group(1).decode()
+    manager=app.test_client()
+    token=csrf(manager,'/admin/activate')
+    data=dict(csrf_token=token,invite_token=invite,password='abcdefg',confirm_password='abcdefg')
+    r=post(manager,'/admin/activate',data)
+    assert r.status_code==400
+    assert 'Mật khẩu cần từ 8 đến 128 ký tự.'.encode() in r.data
+    assert b'minlength="8"' in r.data and b'minlength="12"' not in r.data
+    data.update(password='abcdefgh',confirm_password='abcdefgh')
+    assert post(manager,'/admin/activate',data).status_code==302
+    assert post(manager,'/admin/login',dict(csrf_token=csrf(manager),username='shortpass',password='abcdefgh')).status_code==302
