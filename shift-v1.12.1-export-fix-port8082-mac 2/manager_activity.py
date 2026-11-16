@@ -1,6 +1,6 @@
 """Branch-scoped editing presence and transactional shift audit trail."""
 import json
-from flask import g, has_request_context, jsonify, request
+from flask import abort, g, has_request_context, jsonify, request
 from branches import branch_id
 
 
@@ -65,10 +65,10 @@ def install_manager_activity(app, connect):
 
     @app.get('/admin/schedule-activity')
     def schedule_activity():
-        owner = g.manager['role'] == 'owner'
+        if g.manager['role'] != 'owner':
+            abort(403)
         with connect() as c:
-            stores = c.execute('SELECT id,name FROM branches WHERE %s OR id=%s ORDER BY id',
-                               (owner, branch_id())).fetchall()
+            stores = c.execute('SELECT id,name FROM branches ORDER BY id').fetchall()
             result = []
             for store in stores:
                 people = c.execute('''SELECT a.display_name AS name,

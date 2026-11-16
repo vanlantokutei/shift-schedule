@@ -1,14 +1,16 @@
+{% if g.manager and g.manager.role == 'owner' %}
 <section id="managerActivity" aria-label="Hoạt động quản lý" style="margin:12px;padding:14px;border:1px solid #cadbd2;border-radius:12px;background:#f6faf8;color:#183f30">
   <b>👤 Hoạt động quản lý</b>
   <p id="managerActivityStatus" role="status">Đang tải trạng thái…</p>
   <div id="managerActivityRows"></div>
   <small>Trạng thái cập nhật mỗi 15 giây. Lịch sử ghi từ khi bật tính năng; giờ Nhật Bản.</small>
 </section>
+{% endif %}
 <script>
 (()=>{
  const panel=document.getElementById('managerActivity');
  // Keep activity next to the schedule, including on small screens.
- const main=document.querySelector('main');if(main)main.prepend(panel);
+ const main=document.querySelector('main');if(main&&panel)main.prepend(panel);
  const root=document.getElementById('managerActivityRows'),status=document.getElementById('managerActivityStatus');
  const branch={{current_branch.id|tojson}},csrf={{manager_csrf()|tojson}};
  const tab=crypto.randomUUID(),url=p=>p+'?branch='+branch;
@@ -21,6 +23,7 @@
   if(busy||document.hidden)return;busy=true;
   try{
    const ping=await pulse(editing()?'editing':'viewing');if(!ping.ok)throw Error();
+   if(!panel)return;
    const response=await fetch(url('/admin/schedule-activity'),{cache:'no-store'});if(!response.ok)throw Error();
    const data=await response.json(),fragment=document.createDocumentFragment();
    const open=new Set([...root.querySelectorAll('details[open]')].map(e=>e.dataset.branch));
@@ -35,7 +38,7 @@
     box.append(details);fragment.append(box);
    }
    root.replaceChildren(fragment);status.textContent='';
-  }catch(error){status.textContent='Chưa cập nhật được trạng thái. Đang thử lại…';root.replaceChildren();}
+  }catch(error){if(!panel)return;status.textContent='Chưa cập nhật được trạng thái. Đang thử lại…';root.replaceChildren();}
   finally{busy=false;}
  }
  // Mark edits only when a shift field changes, not when an editor is opened.
