@@ -1,0 +1,48 @@
+<section id="managerActivity" aria-label="Hoạt động quản lý" style="margin:12px;padding:14px;border:1px solid #cadbd2;border-radius:12px;background:#f6faf8;color:#183f30">
+  <b>👤 Hoạt động quản lý</b>
+  <p id="managerActivityStatus" role="status">Đang tải trạng thái…</p>
+  <div id="managerActivityRows"></div>
+  <small>Trạng thái cập nhật mỗi 15 giây. Lịch sử ghi từ khi bật tính năng; giờ Nhật Bản.</small>
+</section>
+<script>
+(()=>{
+ const panel=document.getElementById('managerActivity');
+ // Keep activity next to the schedule, including on small screens.
+ const main=document.querySelector('main');if(main)main.prepend(panel);
+ const root=document.getElementById('managerActivityRows'),status=document.getElementById('managerActivityStatus');
+ const branch={{current_branch.id|tojson}},csrf={{manager_csrf()|tojson}};
+ const tab=crypto.randomUUID(),url=p=>p+'?branch='+branch;
+ let changed=0,busy=false;
+ const editing=()=>Date.now()-changed<60000;
+ function pulse(state){return fetch(url('/admin/schedule-presence'),{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({tab,state})});}
+ const node=(tag,text)=>{const el=document.createElement(tag);el.textContent=text;return el;};
+ const hours=s=>s&&s.start?s.start+'–'+s.end+(s.break_start?' · nghỉ '+s.break_start+'–'+s.break_end:'')+(s.break2_start?' / '+s.break2_start+'–'+s.break2_end:''):'Nghỉ';
+ async function refresh(){
+  if(busy||document.hidden)return;busy=true;
+  try{
+   const ping=await pulse(editing()?'editing':'viewing');if(!ping.ok)throw Error();
+   const response=await fetch(url('/admin/schedule-activity'),{cache:'no-store'});if(!response.ok)throw Error();
+   const data=await response.json(),fragment=document.createDocumentFragment();
+   const open=new Set([...root.querySelectorAll('details[open]')].map(e=>e.dataset.branch));
+   for(const store of data.branches){
+    const box=node('div','');box.style.cssText='padding:10px 0;border-top:1px solid #dce8e1';box.append(node('b',store.name));
+    box.append(node('p',store.people.length?store.people.map(p=>(p.state==='editing'?'🟠 ':'🟢 ')+p.name+(p.state==='editing'?' đang sửa (chưa xác nhận lưu)':' đang xem')).join(' · '):'⚪ Không có quản lý đang xem hoặc sửa'));
+    if(store.changes.length){const latest=store.changes[0];box.append(node('p','Lưu gần nhất: '+latest.manager_name+' — '+latest.at));}
+    else box.append(node('p','Chưa ghi nhận thay đổi giờ làm.'));
+    const details=node('details','');details.dataset.branch=String(store.id);details.open=open.has(String(store.id));
+    details.append(node('summary','Lịch sử chỉnh sửa (30 thay đổi gần nhất)'));
+    for(const change of store.changes){const line=node('p',change.at+' · '+change.manager_name+' · '+change.staff_name+' · '+change.work_date+' : '+hours(change.before_shift)+' → '+hours(change.after_shift));line.style.cssText='font-size:13px;overflow-wrap:anywhere';details.append(line);}
+    box.append(details);fragment.append(box);
+   }
+   root.replaceChildren(fragment);status.textContent='';
+  }catch(error){status.textContent='Chưa cập nhật được trạng thái. Đang thử lại…';root.replaceChildren();}
+  finally{busy=false;}
+ }
+ // Mark edits only when a shift field changes, not when an editor is opened.
+ document.addEventListener('input',event=>{if(event.target.closest('#editor')){changed=Date.now();pulse('editing').catch(()=>{});}},true);
+ document.addEventListener('click',event=>{if(event.target.closest('#cancel')){changed=0;pulse('viewing').catch(()=>{});}},true);
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)pulse('away').catch(()=>{});else refresh();});
+ window.addEventListener('pagehide',()=>{pulse('away').catch(()=>{});});
+ refresh();setInterval(refresh,15000);
+})();
+</script>
