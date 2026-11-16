@@ -73,3 +73,21 @@ def test_normal_deadline_is_restored_for_24h_store(full_day,monkeypatch):
     assert 'Đã hết hạn' in response.text
     assert 'Kibo mở 24/24' not in response.text
     assert raw.execute("SELECT count(*) FROM shifts WHERE staff_id=2 AND work_date='2026-11-16'").fetchone()[0]==0
+
+@pytest.mark.parametrize('branch,sid',[(1,1),(2,2)])
+def test_manager_midnight_end_saved_and_totals(full_day,branch,sid):
+    app,client,raw=full_day
+    payload={'staff_id':sid,'date':'2026-11-17','start':'10:00','end':'24:00',
+             'break_start':'13:00','break_end':'14:00'}
+    response=client.post(f'/shift?branch={branch}',json=payload,headers=HEADERS,base_url=BASE)
+    assert response.status_code==200
+    row=dict(raw.execute("SELECT * FROM shifts WHERE staff_id=? AND work_date='2026-11-17'",(sid,)).fetchone())
+    assert row['end']=='24:00'
+    assert app.view_functions['shift'].__globals__['hours'](row)==13
+    assert client.get(f'/?branch={branch}&week=2026-11-16',base_url=BASE).status_code==200
+    payload.update(break_start='23:30',break_end='24:00')
+    assert client.post(f'/shift?branch={branch}',json=payload,headers=HEADERS,base_url=BASE).status_code==200
+    payload['end']='24:30'
+    assert client.post(f'/shift?branch={branch}',json=payload,headers=HEADERS,base_url=BASE).status_code==400
+    payload.update(start='24:00',end='06:00')
+    assert client.post(f'/shift?branch={branch}',json=payload,headers=HEADERS,base_url=BASE).status_code==400
