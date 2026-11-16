@@ -5,7 +5,7 @@ from jp_holidays import holiday_context
 from kibo_deadlines import window as kibo_window, always_open as kibo_always_open, install_deadline_route
 import os
 from branches import branch_id, init_branches, install_branches, full_day_hours
-from shift_times import shift_bounds, break_bounds
+from shift_times import shift_bounds, break_bounds, minute
 import psycopg
 from time import perf_counter
 from psycopg.rows import dict_row
@@ -53,7 +53,9 @@ def manager_week():
  return monday()+timedelta(days=7 if today.weekday()>=3 else 0)
 def hdiff(a,b):
  if not a or not b:return 0
- x=datetime.strptime(a,'%H:%M');y=datetime.strptime(b,'%H:%M');return max(0,(y-x).seconds/3600)
+ duration=minute(b)-minute(a)
+ if duration<0:duration+=1440
+ return duration/60
 def hours(r):
  if not r:return 0
  br=hdiff(r['break_start'],r['break_end']) if r['break_start'] and r['break_end'] else 0
