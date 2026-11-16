@@ -1,6 +1,7 @@
 {% set brand_name = current_branch.name if mode=='accounts' else (auth_branch.name if auth_branch else 'Betoya') %}
 <!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Quản lý · {{brand_name}}</title><style>
 *{box-sizing:border-box}body{margin:0;background:#f3f5f4;color:#20332b;font:16px system-ui,sans-serif}main{max-width:520px;margin:7vh auto;padding:30px;background:white;border:1px solid #dce4df;border-radius:18px}h1{font-size:25px;margin:8px 0 12px}p{line-height:1.6;color:#526359}label{display:block;margin:18px 0 6px;font-weight:600}input{width:100%;padding:12px;border:1px solid #a8b9ae;border-radius:8px;font:inherit}button,.button{display:inline-block;background:#173e2b;color:white;border:0;padding:12px 18px;border-radius:8px;font:inherit;text-decoration:none;cursor:pointer}button[type=submit]{margin-top:22px}a{color:#245f41}.error{background:#fff0ed;padding:12px;border-radius:8px;color:#9c2d19}.account{padding:16px 0;border-bottom:1px solid #ddd}.account small{display:block;margin:6px 0}code{overflow-wrap:anywhere}.invite{background:#edf6ef;padding:16px;border-radius:8px}footer{margin-top:26px;font-size:14px}form{margin:0}
+.password-field{position:relative}.password-field input{padding-right:56px}.password-toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:44px;height:44px;padding:10px;background:transparent;color:#245f41}.password-toggle:focus-visible{outline:2px solid #245f41;outline-offset:1px}.password-toggle svg{width:22px;height:22px}.password-toggle[aria-pressed="true"] .eye-slash{display:none}
 </style>{% if mode=='accounts' %}{% include 'branch_urls.html' %}{% endif %}</head><body><main><small id="authBrand">{{brand_name}} · Dành cho quản lý</small>
 {% if error %}<p class="error" role="alert">{{error}}</p>{% endif %}
 {% if mode=='unconfigured' %}<h1>Trang quản lý đã được khóa</h1><p>Cần thiết lập tài khoản chủ sở hữu trước khi sử dụng.</p><p>Trong Render → Environment của dịch vụ Betoya, thêm biến <code>ADMIN_SETUP_TOKEN</code> với một mã ngẫu nhiên bí mật dài ít nhất 32 ký tự rồi lưu và triển khai lại. Sau đó tải lại trang này.</p><p>Không gửi mã hoặc mật khẩu trong tin nhắn. Trang đăng ký Kibo vẫn dùng bình thường.</p>
@@ -34,4 +35,29 @@
 })();
 </script>{% endif %}
 {% if mode=='login' and setup_available %}<p><a href="{{url_for('manager_setup')}}">Thiết lập tài khoản đầu tiên</a></p>{% endif %}
-{% endif %}{% if mode=='accounts' or auth_branch %}<footer><a href="/kibo?branch={{current_branch.id if mode=='accounts' else auth_branch.id}}">Nhân viên: đăng ký 希望シフト →</a></footer>{% endif %}</main></body></html>
+{% endif %}{% if mode=='accounts' or auth_branch %}<footer><a href="/kibo?branch={{current_branch.id if mode=='accounts' else auth_branch.id}}">Nhân viên: đăng ký 希望シフト →</a></footer>{% endif %}</main><script>
+// Each password field has its own visibility control; passwords start hidden.
+document.querySelectorAll('input[type="password"]').forEach((input,index)=>{
+ const wrapper=document.createElement('div');
+ wrapper.className='password-field';
+ input.parentNode.insertBefore(wrapper,input);
+ wrapper.appendChild(input);
+ if(!input.id)input.id='password-field-'+index;
+ const button=document.createElement('button');
+ button.type='button';
+ button.className='password-toggle';
+ button.setAttribute('aria-controls',input.id);
+ button.setAttribute('aria-label','Hiển thị mật khẩu');
+ button.setAttribute('aria-pressed','false');
+ button.title='Hiển thị mật khẩu';
+ button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="eye-slash" d="m3 3 18 18"/></svg>';
+ button.addEventListener('click',()=>{
+  const visible=input.type==='password';
+  input.type=visible?'text':'password';
+  button.setAttribute('aria-pressed',String(visible));
+  button.setAttribute('aria-label',visible?'Ẩn mật khẩu':'Hiển thị mật khẩu');
+  button.title=button.getAttribute('aria-label');
+ });
+ wrapper.appendChild(button);
+});
+</script></body></html>
