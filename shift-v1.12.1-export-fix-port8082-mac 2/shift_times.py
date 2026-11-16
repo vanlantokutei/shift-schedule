@@ -33,3 +33,28 @@ def break_bounds(start,end,left,right,overnight=False):
     if not left<=begin<finish<=right:
         raise ValueError('Break must be inside shift')
     return begin,finish
+
+
+def night_minutes(row):
+    """Net minutes in 22:00–05:00, including shifts crossing midnight."""
+    if not row or not row.get('start') or not row.get('end'):
+        return 0
+    left,right=shift_bounds(row['start'],row['end'],overnight=True)
+    rests=[]
+    for a,b in [('break_start','break_end'),('break2_start','break2_end')]:
+        if row.get(a) and row.get(b):
+            rests.append(break_bounds(row[a],row[b],left,right,overnight=True))
+    # Merge rests so legacy overlapping records cannot subtract twice.
+    merged=[]
+    for begin,finish in sorted(rests):
+        if merged and begin<=merged[-1][1]:
+            merged[-1]=(merged[-1][0],max(merged[-1][1],finish))
+        else:
+            merged.append((begin,finish))
+    total=0
+    for begin,finish in [(0,300),(1320,1740),(2760,3180)]:
+        a,b=max(left,begin),min(right,finish)
+        if b>a:
+            total+=b-a
+            total-=sum(max(0,min(b,d)-max(a,c)) for c,d in merged)
+    return total

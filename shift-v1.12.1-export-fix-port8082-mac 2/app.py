@@ -5,7 +5,8 @@ from jp_holidays import holiday_context
 from kibo_deadlines import window as kibo_window, always_open as kibo_always_open, install_deadline_route
 import os
 from branches import branch_id, init_branches, install_branches, full_day_hours
-from shift_times import shift_bounds, break_bounds, minute
+from shift_times import shift_bounds, break_bounds, minute, night_minutes
+from decimal import Decimal, ROUND_HALF_UP
 import psycopg
 from time import perf_counter
 from psycopg.rows import dict_row
@@ -87,11 +88,14 @@ def index():
  sm={(r['staff_id'],r['work_date']):r for r in rows}
  totals={s['id']:sum(hours(sm.get((s['id'],str(d)))) for d in days) for s in staff}
  monthly_totals={s['id']:sum(hours(r) for r in month_rows if r['staff_id']==s['id']) for s in staff}
- pay={s['id']:(round(monthly_totals[s['id']]*(s['hourly_rate'] or 0)) if s['pay_type']=='hourly' else (s['monthly_salary'] or 0)) for s in staff}
- baito_monthly_pay=sum(round(monthly_totals[s['id']]*(s['hourly_rate'] or 0)) for s in staff if s['staff_type']=='baito')
+ night_enabled=branch_id()==2
+ monthly_night_minutes={s['id']:sum(night_minutes(r) for r in month_rows if r['staff_id']==s['id']) if night_enabled else 0 for s in staff}
+ night_premiums={s['id']:Decimal(monthly_night_minutes[s['id']])*Decimal(s['hourly_rate'] or 0)/Decimal(240) if s['pay_type']=='hourly' else Decimal(0) for s in staff}
+ pay={s['id']:(int((Decimal(str(monthly_totals[s['id']]))*Decimal(s['hourly_rate'] or 0)+night_premiums[s['id']]).quantize(Decimal('1'),rounding=ROUND_HALF_UP)) if s['pay_type']=='hourly' and night_enabled else round(monthly_totals[s['id']]*(s['hourly_rate'] or 0)) if s['pay_type']=='hourly' else (s['monthly_salary'] or 0)) for s in staff}
+ baito_monthly_pay=sum(pay[s['id']] for s in staff if s['staff_type']=='baito' and s['pay_type']=='hourly')
  daily_totals={str(d):sum(hours(sm.get((s['id'],str(d)))) for s in staff) for d in days}
  monthly_all_hours=sum(monthly_totals.values())
- return render_template('index.html',**holiday_context(days),staff=staff,active_staff=active_staff,archived_staff=archived_staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,week_off_ids=week_off_ids,kibo_deadline=kibo_deadline,kibo_full_day=kibo_full_day,kibo_unlimited=kibo_unlimited,kibo_closed=not kibo_unlimited and not(kibo_open<=kibo_now<kibo_deadline),kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
+ return render_template('index.html',**holiday_context(days),night_enabled=night_enabled,monthly_night_minutes=monthly_night_minutes,night_premiums=night_premiums,staff=staff,active_staff=active_staff,archived_staff=archived_staff,days=days,sm=sm,totals=totals,monthly_totals=monthly_totals,pay=pay,baito_monthly_pay=baito_monthly_pay,daily_totals=daily_totals,monthly_all_hours=monthly_all_hours,kibo_status=kibo_status,week_off_ids=week_off_ids,kibo_deadline=kibo_deadline,kibo_full_day=kibo_full_day,kibo_unlimited=kibo_unlimited,kibo_closed=not kibo_unlimited and not(kibo_open<=kibo_now<kibo_deadline),kibo_week=kibo_week,kibo_end=kibo_end,latest_kibo=latest_kibo,prev=m-timedelta(days=7),nxt=m+timedelta(days=7),current_month=m.month,current_year=m.year)
 def suggest_draft_breaks(draft,existing):
  """Preview-only breaks, staggered in 15-minute increments."""
  def mins(t):return int(t[:2])*60+int(t[3:])
