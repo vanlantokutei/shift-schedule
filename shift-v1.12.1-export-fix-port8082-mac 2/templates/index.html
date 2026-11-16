@@ -65,11 +65,11 @@ const bs2=document.querySelector('#bs2'),be2=document.querySelector('#be2');
 const inputs=[st,en,bs,be,bs2,be2];
 function norm(v){
  v=(v||'').trim().replace(/[^0-9:]/g,''); if(!v)return '';
- if(v.includes(':')){let [h,m='0']=v.split(':'); if(!/^\d{1,2}$/.test(h)||!/^\d{1,2}$/.test(m))return null;h=+h;m=+m;if(h>23||m>59)return null;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')}
+ if(v.includes(':')){let [h,m='0']=v.split(':'); if(!/^\d{1,2}$/.test(h)||!/^\d{1,2}$/.test(m))return null;h=+h;m=+m;if(h>24||m>59||(h===24&&m!==0))return null;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')}
  if(!/^\d{1,4}$/.test(v))return null;
  let h,m;
  if(v.length<=2){h=+v;m=0}else if(v.length===3){h=+v.slice(0,1);m=+v.slice(1)}else{h=+v.slice(0,2);m=+v.slice(2)}
- if(h>23||m>59)return null;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')
+ if(h>24||m>59||(h===24&&m!==0))return null;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')
 }
 function normalizeInput(el){let n=norm(el.value);if(n!==null)el.value=n;return n}
 function openEditor(x){if(x.closest('.staff-row').dataset.active==='0'){alert('Nhân viên đã nghỉ. Khôi phục nhân viên để chỉnh sửa lịch.');return;}dirty=false;cell=x;document.querySelectorAll('.editing').forEach(y=>y.classList.remove('editing'));x.classList.add('editing');st.value=x.dataset.start;en.value=x.dataset.end;bs.value=x.dataset.bs;be.value=x.dataset.be;bs2.value=x.dataset.bs2||'';be2.value=x.dataset.be2||'';const r=x.getBoundingClientRect();ed.style.left=Math.max(8,Math.min(innerWidth-350,r.left))+'px';ed.style.top=Math.max(8,Math.min(innerHeight-310,r.bottom+4))+'px';ed.classList.remove('hidden');st.focus();st.select()}
@@ -82,7 +82,10 @@ save.onclick=e=>{e.stopPropagation();saveShift()};
 async function saveShift(){
  if(!cell||saving)return;
  const values=inputs.map(normalizeInput),[a,b,c,d,e,f]=values;
- if(values.some(v=>v===null)||({{kibo_full_day|tojson}}?(((a||b)&&(!a||!b||b===a))||[[c,d],[e,f]].some(([l,r])=>Boolean(l)!==Boolean(r))):(((a||b)&&(!a||!b||b<=a))||[[c,d],[e,f]].some(([l,r])=>(l||r)&&(!a||!b||!l||!r||r<=l||l<a||r>b))||(c&&e&&c<f&&e<d)))){
+ if(values.some(v=>v===null)||a==='24:00'){
+  status.textContent='⚠️ Giờ không hợp lệ. Giờ kết thúc có thể là 24:00.';cell.classList.add('bad');return;
+ }
+ if(({{kibo_full_day|tojson}}?(((a||b)&&(!a||!b||b===a))||[[c,d],[e,f]].some(([l,r])=>Boolean(l)!==Boolean(r))):(((a||b)&&(!a||!b||b<=a))||[[c,d],[e,f]].some(([l,r])=>(l||r)&&(!a||!b||!l||!r||r<=l||l<a||r>b))||(c&&e&&c<f&&e<d)))){
   status.textContent='⚠️ Giờ nghỉ phải nằm trong ca và không trùng nhau';cell.classList.add('bad');return;
  }
  saving=true;status.textContent='Đang lưu...';
