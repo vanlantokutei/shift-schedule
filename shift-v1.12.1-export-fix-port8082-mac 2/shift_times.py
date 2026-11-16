@@ -3,6 +3,8 @@ from datetime import datetime
 
 
 def minute(value):
+    if value=='24:00':
+        return 1440
     parsed=datetime.strptime(value,'%H:%M')
     if parsed.strftime('%H:%M')!=value:
         raise ValueError('Invalid clock time')
@@ -11,6 +13,8 @@ def minute(value):
 
 def shift_bounds(start,end,overnight=False):
     left,right=minute(start),minute(end)
+    if left==1440:
+        raise ValueError('Start must be before 24:00')
     if overnight and right<left:
         right+=1440
     if right<=left:
