@@ -137,3 +137,50 @@ def test_expired_invite_rejected(env):
     raw.execute("UPDATE manager_accounts SET invite_expires='2000-01-01' WHERE username='expired'");raw.commit()
     c=app.test_client()
     assert post(c,'/admin/activate',dict(csrf_token=csrf(c,'/admin/activate'),invite_token=invite,password='manager-secret-123',confirm_password='manager-secret-123')).status_code==400
+
+
+def test_reactivate_preserves_password_branch_and_invalidates_old_session(env):
+    from werkzeug.security import generate_password_hash
+    owner=setup(env);app,raw,_=env
+    password_hash=generate_password_hash('manager-secret-123')
+    raw.execute("INSERT INTO manager_accounts(username,display_name,password_hash,branch_id) VALUES('returning','Returning',?,2)",(password_hash,));raw.commit()
+    uid=raw.execute("SELECT id FROM manager_accounts WHERE username='returning'").fetchone()['id']
+    manager=app.test_client()
+    assert post(manager,'/admin/login',dict(csrf_token=csrf(manager),username='returning',password='manager-secret-123')).status_code==302
+    token=csrf(owner,'/admin/accounts')
+    assert post(owner,f'/admin/accounts/{uid}/disable',{'csrf_token':token}).status_code==302
+    html=owner.get('/admin/accounts',base_url='https://localhost').data
+    assert f'/admin/accounts/{uid}/reactivate'.encode() in html
+    assert 'Kích hoạt lại'.encode() in html
+    assert post(owner,f'/admin/accounts/{uid}/reactivate',{}).status_code==403
+    assert post(owner,f'/admin/accounts/{uid}/reactivate',{'csrf_token':token}).status_code==302
+    row=raw.execute('SELECT * FROM manager_accounts WHERE id=?',(uid,)).fetchone()
+    assert row['active']==1 and row['branch_id']==2 and row['password_hash']==password_hash
+    assert row['version']==3 and row['invite_hash'] is None
+    assert manager.get('/',base_url='https://localhost').status_code==302
+    assert post(manager,'/admin/login',dict(csrf_token=csrf(manager),username='returning',password='manager-secret-123')).status_code==302
+    assert post(manager,f'/admin/accounts/{uid}/reactivate',{'csrf_token':csrf(manager,'/admin/accounts') or csrf(manager)}).status_code==403
+    assert post(owner,f'/admin/accounts/{uid}/reactivate',{'csrf_token':token}).status_code==302
+    assert raw.execute('SELECT version FROM manager_accounts WHERE id=?',(uid,)).fetchone()['version']==3
+    owner_id=raw.execute("SELECT id FROM manager_accounts WHERE role='owner'").fetchone()['id']
+    assert post(owner,f'/admin/accounts/{owner_id}/reactivate',{'csrf_token':token}).status_code==302
+    assert raw.execute('SELECT version FROM manager_accounts WHERE id=?',(owner_id,)).fetchone()['version']==1
+
+
+def test_reactivate_unactivated_account_issues_new_branch_invitation(env):
+    import hashlib
+    owner=setup(env);app,raw,_=env
+    old_token='old-invitation-token-that-is-long-enough'
+    raw.execute("INSERT INTO manager_accounts(username,display_name,active,branch_id,invite_hash) VALUES('pending','Pending',0,2,?)",(hashlib.sha256(old_token.encode()).hexdigest(),));raw.commit()
+    uid=raw.execute("SELECT id FROM manager_accounts WHERE username='pending'").fetchone()['id']
+    anonymous=app.test_client()
+    assert post(anonymous,f'/admin/accounts/{uid}/reactivate',{}).status_code==401
+    r=post(owner,f'/admin/accounts/{uid}/reactivate',{'csrf_token':csrf(owner,'/admin/accounts')})
+    assert r.status_code==200
+    invite=re.search(rb'value="https://localhost/admin/activate\?branch=2#([^"]+)"',r.data).group(1).decode()
+    assert invite!=old_token
+    data=dict(csrf_token=csrf(anonymous,'/admin/activate'),invite_token=old_token,password='manager-secret-123',confirm_password='manager-secret-123')
+    assert post(anonymous,'/admin/activate',data).status_code==400
+    data['invite_token']=invite
+    assert post(anonymous,'/admin/activate',data).status_code==302
+    assert raw.execute('SELECT branch_id FROM manager_accounts WHERE id=?',(uid,)).fetchone()['branch_id']==2

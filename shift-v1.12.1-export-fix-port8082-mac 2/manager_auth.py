@@ -131,7 +131,7 @@ def install_manager_auth(app, connect):
             expected = session.get('csrf','')
             if not expected or not hmac.compare_digest(expected, supplied):
                 return jsonify(ok=False,error='Phiên bảo mật đã hết hạn. Vui lòng tải lại trang.'),403
-        if request.endpoint in {'manager_accounts','manager_account_action'} and g.manager['role'] != 'owner':
+        if request.endpoint in {'manager_accounts','manager_account_action','manager_account_reactivate'} and g.manager['role'] != 'owner':
             abort(403)
 
     @app.after_request
@@ -225,9 +225,27 @@ def install_manager_auth(app, connect):
                     invitation=url_for('manager_activate',branch=assigned_branch,_external=True)+'#'+token
                 else:
                     error='Tên đăng nhập đã tồn tại.'
+        return accounts_page(invitation=invitation, error=error)
+
+    def accounts_page(invitation=None, error=None):
         with connect() as c:
             accounts=c.execute('SELECT a.id,a.username,a.display_name,a.role,a.active,a.branch_id,b.name AS branch_name,a.password_hash IS NOT NULL AS activated FROM manager_accounts a JOIN branches b ON b.id=a.branch_id ORDER BY a.id').fetchall()
         return page('accounts',accounts=accounts,invitation=invitation,error=error)
+
+    @app.post('/admin/accounts/<int:account_id>/reactivate')
+    def manager_account_reactivate(account_id):
+        token = secrets.token_urlsafe(32)
+        with connect() as c:
+            account = c.execute('''UPDATE manager_accounts SET active=1,version=version+1,
+                invite_hash=CASE WHEN password_hash IS NULL THEN %s ELSE NULL END,
+                invite_expires=CASE WHEN password_hash IS NULL THEN CURRENT_TIMESTAMP + interval '48 hours' ELSE NULL END
+                WHERE id=%s AND role!='owner' AND active=0
+                RETURNING branch_id,password_hash IS NOT NULL AS activated''',
+                (hashlib.sha256(token.encode()).hexdigest(), account_id)).fetchone()
+        if account and not account['activated']:
+            invitation = url_for('manager_activate', branch=account['branch_id'], _external=True) + '#' + token
+            return accounts_page(invitation=invitation)
+        return redirect(url_for('manager_accounts'))
 
     @app.post('/admin/accounts/<int:account_id>/disable')
     def manager_account_action(account_id):
