@@ -1,5 +1,6 @@
 """Employee schedule viewer; reads immutable publications approved by managers."""
 from datetime import datetime, timedelta
+from shift_times import shift_bounds, break_bounds
 import hashlib
 import hmac
 from jp_holidays import holiday_context
@@ -9,6 +10,28 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 from line_branches import branch_number, branch_name, branch_url
 from flask import abort, g, redirect, render_template, request, Response, session
+
+
+def worked_minutes(row):
+    if not row or not row.get('start') or not row.get('end'):
+        return 0
+    left, right = shift_bounds(row['start'], row['end'], overnight=True)
+    rests = []
+    for start, end in [('break_start', 'break_end'), ('break2_start', 'break2_end')]:
+        if row.get(start) and row.get(end):
+            rests.append(break_bounds(row[start], row[end], left, right, overnight=True))
+    merged = []
+    for begin, finish in sorted(rests):
+        if merged and begin <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], finish))
+        else:
+            merged.append((begin, finish))
+    return right - left - sum(end - start for start, end in merged)
+
+
+def duration_label(minutes):
+    hours, remainder = divmod(minutes, 60)
+    return f'{hours} giờ' + (f' {remainder} phút' if remainder else '')
 
 
 def install_staff_schedule(app, connect, linked_staff):
@@ -136,7 +159,10 @@ def install_staff_schedule(app, connect, linked_staff):
             selected = next((p for p in content['people'] if p['id'] == wanted), None)
         people = [selected] if selected else content['people']
         cells = {(r['staff_id'], str(r['work_date'])): r for r in content['shifts']}
-        return render_template('staff_schedule.html', **holiday_context(days), week=week, days=days, people=people,
+        daily_minutes = {str(day): worked_minutes(cells.get((selected['id'], str(day))))
+                         for day in days} if selected else {}
+        return render_template('staff_schedule.html', daily_hours={day: duration_label(value) for day, value in daily_minutes.items()},
+            weekly_hours=duration_label(sum(daily_minutes.values())), **holiday_context(days), week=week, days=days, people=people,
             selected=selected, me=me, cells=cells, today=datetime.now(ZoneInfo('Asia/Tokyo')).date(), saved=bool(saved), old=bool(old),
             imported=content.get('source') == 'manager-import', show_manager_menu=show_manager_menu,
             previous=week-timedelta(days=7), following=week+timedelta(days=7),
