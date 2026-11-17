@@ -1,6 +1,7 @@
 """Employee schedule viewer; reads immutable publications approved by managers."""
 from datetime import datetime, timedelta
-from shift_times import shift_bounds, break_bounds
+from shift_times import shift_bounds, break_bounds, night_minutes
+from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import hmac
 from jp_holidays import holiday_context
@@ -32,6 +33,12 @@ def worked_minutes(row):
 def duration_label(minutes):
     hours, remainder = divmod(minutes, 60)
     return f'{hours} giờ' + (f' {remainder} phút' if remainder else '')
+
+
+def pay_label(minutes, night, rate):
+    amount = Decimal(minutes) * Decimal(rate or 0) / 60
+    amount += Decimal(night) * Decimal(rate or 0) / 240
+    return f"¥{int(amount.quantize(Decimal('1'), rounding=ROUND_HALF_UP)):,}"
 
 
 def install_staff_schedule(app, connect, linked_staff):
@@ -162,14 +169,20 @@ def install_staff_schedule(app, connect, linked_staff):
         daily_minutes = {str(day): worked_minutes(cells.get((selected['id'], str(day))))
                          for day in days} if selected else {}
         month_summaries = []
+        payroll = None
+        # A coworker's personal schedule must never reveal their pay.
+        own_pay = bool(selected and me and selected['id'] == me['id'])
         if selected:
             with connect() as c:
+                if own_pay:
+                    payroll = c.execute('SELECT * FROM staff WHERE id=%s AND branch_id=%s',
+                        (selected['id'], branch_number())).fetchone()
                 snapshots = {}
                 for month_start in sorted({day.replace(day=1) for day in days}):
                     month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
                     cutoff = min(days[-1], month_end)
                     cursor = month_start - timedelta(days=month_start.weekday())
-                    total = cumulative = 0
+                    total = cumulative = total_night = cumulative_night = 0
                     while cursor <= month_end:
                         if cursor not in snapshots:
                             snapshot = publication(c, cursor)
@@ -181,12 +194,23 @@ def install_staff_schedule(app, connect, linked_staff):
                                     and str(cursor) <= work_date <= str(cursor + timedelta(days=6))):
                                 minutes = worked_minutes(row)
                                 total += minutes
+                                night = night_minutes(row) if branch_number() == 2 else 0
+                                total_night += night
                                 if work_date <= str(cutoff):
                                     cumulative += minutes
+                                    cumulative_night += night
                         cursor += timedelta(days=7)
                     month_summaries.append({'month': month_start.strftime('%m/%Y'),
                         'cutoff': cutoff.strftime('%d/%m'), 'cumulative': duration_label(cumulative),
                         'total': duration_label(total)})
+                    if payroll:
+                        summary = month_summaries[-1]
+                        if payroll.get('pay_type', 'hourly') == 'hourly':
+                            summary['cumulative_pay'] = pay_label(cumulative, cumulative_night, payroll.get('hourly_rate'))
+                            summary['total_pay'] = pay_label(total, total_night, payroll.get('hourly_rate'))
+                            summary['rate'] = f"¥{payroll.get('hourly_rate') or 0:,}/giờ"
+                        else:
+                            summary['salary'] = f"¥{payroll.get('monthly_salary') or 0:,}"
         return render_template('staff_schedule.html', daily_hours={day: duration_label(value) for day, value in daily_minutes.items()},
             month_summaries=month_summaries, weekly_hours=duration_label(sum(daily_minutes.values())), **holiday_context(days), week=week, days=days, people=people,
             selected=selected, me=me, cells=cells, today=datetime.now(ZoneInfo('Asia/Tokyo')).date(), saved=bool(saved), old=bool(old),

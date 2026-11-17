@@ -201,3 +201,29 @@ def test_month_totals_follow_viewed_week_and_latest_publication(linked_state):
     fourth = get(c, '/staff/schedule?week=2026-11-23&mine=1').data.decode()
     assert f'<strong>{duration_label(1140 + current_minutes)}</strong>' in fourth
     assert 'Cộng dồn tháng 11/2026 đến 29/11' in fourth
+
+
+def test_pay_is_personal_and_uses_net_hours(linked_state):
+    app, raw, service, _, _ = linked_state
+    c = link(app)
+    raw.execute('UPDATE staff SET hourly_rate=1280 WHERE id=1');raw.commit()
+    assert publish(raw, service)[1] == 200
+    own = get(c, '/staff/schedule?week=2026-11-16&mine=1').data.decode()
+    assert 'Lương cộng dồn: ¥14,080' in own
+    assert '¥1,280/giờ' in own
+    coworker = get(c, '/staff/schedule?week=2026-11-16&staff_id=2').data.decode()
+    assert 'Lương cộng dồn:' not in coworker and '/giờ' not in coworker
+    all_staff = get(c).data.decode()
+    assert 'Lương cộng dồn:' not in all_staff and '/giờ' not in all_staff
+    raw.execute("ALTER TABLE staff ADD COLUMN pay_type TEXT DEFAULT 'hourly'")
+    raw.execute('ALTER TABLE staff ADD COLUMN monthly_salary INTEGER DEFAULT 0')
+    raw.execute("UPDATE staff SET pay_type='monthly',monthly_salary=280000 WHERE id=1");raw.commit()
+    salaried = get(c, '/staff/schedule?week=2026-11-16&mine=1').data.decode()
+    assert 'Lương tháng cố định: ¥280,000' in salaried
+    assert 'Lương cộng dồn:' not in salaried
+
+
+def test_estimated_pay_rounding_and_night_premium():
+    from staff_schedule import pay_label
+    assert pay_label(405, 0, 1280) == '¥8,640'
+    assert pay_label(60, 60, 1280) == '¥1,600'
