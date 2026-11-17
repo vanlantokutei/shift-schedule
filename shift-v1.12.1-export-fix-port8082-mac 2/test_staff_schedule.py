@@ -209,7 +209,7 @@ def test_pay_is_personal_and_uses_net_hours(linked_state):
     raw.execute('UPDATE staff SET hourly_rate=1280 WHERE id=1');raw.commit()
     assert publish(raw, service)[1] == 200
     own = get(c, '/staff/schedule?week=2026-11-16&mine=1').data.decode()
-    assert 'Lương cộng dồn: ¥14,080' in own
+    assert 'Lương cộng dồn: <b>¥14,080</b>' in own
     assert '¥1,280/giờ' in own
     coworker = get(c, '/staff/schedule?week=2026-11-16&staff_id=2').data.decode()
     assert 'Lương cộng dồn:' not in coworker and '/giờ' not in coworker
