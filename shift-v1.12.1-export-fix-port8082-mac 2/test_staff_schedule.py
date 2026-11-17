@@ -174,3 +174,30 @@ def test_today_border_uses_japan_date_and_redirect_keeps_week(linked_state,monke
     page=get(c,'/staff/schedule?week=2026-11-16&mine=1').data.decode()
     assert page.count('class="today-label"')==1
     assert 'Thứ 4 · 18/11<span class="today-label">Hôm nay</span>' in page
+
+
+def test_month_totals_follow_viewed_week_and_latest_publication(linked_state):
+    import json
+    app, raw, service, _, _ = linked_state
+    c = link(app)
+    assert publish(raw, service)[1] == 200
+    def snapshot(key, week, shifts, stamp):
+        raw.execute('INSERT INTO staff_schedule_publications(publication_key,week_start,content,published_at) VALUES(?,?,?,?)',
+            (key, week, json.dumps({'people': [{'id': 1, 'name': 'Lân'}], 'shifts': shifts}), stamp))
+        raw.commit()
+    def shift(day, start='11:00', end='22:00'):
+        return {'staff_id': 1, 'work_date': day, 'start': start, 'end': end,
+                'break_start': '14:00', 'break_end': '15:00'}
+    snapshot('old', '2026-11-02', [shift('2026-11-02')], '2026-11-01T10:00:00')
+    snapshot('new', '2026-11-02', [shift('2026-11-02', end='21:00')], '2026-11-01T11:00:00')
+    snapshot('fourth', '2026-11-23', [shift('2026-11-23')], '2026-11-18T10:00:00')
+    html = get(c, '/staff/schedule?week=2026-11-16&mine=1').data.decode()
+    assert 'Cộng dồn tháng 11/2026 đến 22/11' in html
+    from staff_schedule import duration_label, worked_minutes
+    current = raw.execute("SELECT content FROM staff_schedule_publications WHERE week_start='2026-11-16'").fetchone()[0]
+    current_minutes = sum(worked_minutes(r) for r in json.loads(current)['shifts'] if r['staff_id'] == 1)
+    assert f'<strong>{duration_label(540 + current_minutes)}</strong>' in html
+    assert f'Tổng giờ cả tháng: <b>{duration_label(1140 + current_minutes)}</b>' in html
+    fourth = get(c, '/staff/schedule?week=2026-11-23&mine=1').data.decode()
+    assert f'<strong>{duration_label(1140 + current_minutes)}</strong>' in fourth
+    assert 'Cộng dồn tháng 11/2026 đến 29/11' in fourth

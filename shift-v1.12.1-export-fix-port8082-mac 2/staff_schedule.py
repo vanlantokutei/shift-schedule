@@ -161,8 +161,34 @@ def install_staff_schedule(app, connect, linked_staff):
         cells = {(r['staff_id'], str(r['work_date'])): r for r in content['shifts']}
         daily_minutes = {str(day): worked_minutes(cells.get((selected['id'], str(day))))
                          for day in days} if selected else {}
+        month_summaries = []
+        if selected:
+            with connect() as c:
+                snapshots = {}
+                for month_start in sorted({day.replace(day=1) for day in days}):
+                    month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+                    cutoff = min(days[-1], month_end)
+                    cursor = month_start - timedelta(days=month_start.weekday())
+                    total = cumulative = 0
+                    while cursor <= month_end:
+                        if cursor not in snapshots:
+                            snapshot = publication(c, cursor)
+                            snapshots[cursor] = json.loads(snapshot['content']) if snapshot else {'shifts': []}
+                        for row in snapshots[cursor]['shifts']:
+                            work_date = str(row['work_date'])
+                            if (row['staff_id'] == selected['id']
+                                    and str(month_start) <= work_date <= str(month_end)
+                                    and str(cursor) <= work_date <= str(cursor + timedelta(days=6))):
+                                minutes = worked_minutes(row)
+                                total += minutes
+                                if work_date <= str(cutoff):
+                                    cumulative += minutes
+                        cursor += timedelta(days=7)
+                    month_summaries.append({'month': month_start.strftime('%m/%Y'),
+                        'cutoff': cutoff.strftime('%d/%m'), 'cumulative': duration_label(cumulative),
+                        'total': duration_label(total)})
         return render_template('staff_schedule.html', daily_hours={day: duration_label(value) for day, value in daily_minutes.items()},
-            weekly_hours=duration_label(sum(daily_minutes.values())), **holiday_context(days), week=week, days=days, people=people,
+            month_summaries=month_summaries, weekly_hours=duration_label(sum(daily_minutes.values())), **holiday_context(days), week=week, days=days, people=people,
             selected=selected, me=me, cells=cells, today=datetime.now(ZoneInfo('Asia/Tokyo')).date(), saved=bool(saved), old=bool(old),
             imported=content.get('source') == 'manager-import', show_manager_menu=show_manager_menu,
             previous=week-timedelta(days=7), following=week+timedelta(days=7),
